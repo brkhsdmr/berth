@@ -2,7 +2,13 @@
 #include "../core/layout.h"
 #include <appmodel.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <propkey.h>
+#include <propvarutil.h>
 #pragma comment(lib, "shell32")
+#pragma comment(lib, "ole32")
+#pragma comment(lib, "propsys")
 #include <dwmapi.h>
 #include <algorithm>
 #include <cwctype>
@@ -69,6 +75,34 @@ std::wstring appDisplayName(const std::wstring& path) {
 
 namespace {
 
+/// Pencerenin bildirdiği uygulama kimliği (AUMID). Store uygulamalarının çerçevesi
+/// (ApplicationFrameWindow) gerçek süreç askıdayken de kimliği taşır.
+std::wstring windowAumid(HWND w) {
+    std::wstring id;
+    IPropertyStore* store = nullptr;
+    if (SUCCEEDED(SHGetPropertyStoreForWindow(w, IID_PPV_ARGS(&store)))) {
+        PROPVARIANT value;
+        PropVariantInit(&value);
+        if (SUCCEEDED(store->GetValue(PKEY_AppUserModel_ID, &value)) && value.vt == VT_LPWSTR && value.pwszVal) id = value.pwszVal;
+        PropVariantClear(&value);
+        store->Release();
+    }
+    return id;
+}
+
+/// Başlat menüsündeki ad ("Settings", "Terminal"); bulunamazsa boş.
+std::wstring aumidDisplayName(const std::wstring& aumid) {
+    std::wstring name;
+    IShellItem* item = nullptr;
+    if (SUCCEEDED(SHCreateItemFromParsingName((L"shell:AppsFolder\\" + aumid).c_str(), nullptr, IID_PPV_ARGS(&item)))) {
+        PWSTR text = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_NORMALDISPLAY, &text)) && text) name = text;
+        CoTaskMemFree(text);
+        item->Release();
+    }
+    return name;
+}
+
 struct Context {
     Snapshot* snapshot;
     VirtualDesktops* desktops;
@@ -131,10 +165,14 @@ BOOL CALLBACK onWindow(HWND w, LPARAM param) {
     DWORD pid = 0;
     GetWindowThreadProcessId(w, &pid);
     if (pid == c.ownPid) return TRUE;
+    // Store uygulaması küçültülüp askıya alınınca çocuk pencere yok olur; kimlik çerçeveden okunur.
+    // Yoksa tüm böyle uygulamalar "Application Frame Host" adıyla tek uygulamada birleşiyordu.
+    std::wstring frameAumid;
     if (!wcscmp(cls, L"ApplicationFrameWindow")) {
         DWORD child = 0;
         EnumChildWindows(w, findCoreChild, reinterpret_cast<LPARAM>(&child));
         if (child) pid = child;
+        else frameAumid = windowAumid(w);
     }
     std::wstring path = processPath(pid);
     if (path.empty()) return TRUE; // Yönetici olarak çalışan süreç de buraya düşmez, yetkimiz yeterse okunur.
@@ -142,6 +180,11 @@ BOOL CALLBACK onWindow(HWND w, LPARAM param) {
     std::wstring lower = path;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
     window.appId = toUtf8(stableAppPath(lower));
+    if (!frameAumid.empty()) {
+        std::wstring key = frameAumid;
+        std::transform(key.begin(), key.end(), key.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+        window.appId = toUtf8(L"aumid:" + key);
+    }
 
     auto& app = c.snapshot->apps[window.appId];
     if (app.id.empty()) {
@@ -155,11 +198,21 @@ BOOL CALLBACK onWindow(HWND w, LPARAM param) {
             c.names[lower] = app.name;
         }
         app.running = true;
-        if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
+        if (!frameAumid.empty()) {
+            app.aumid = frameAumid;
+        } else if (HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)) {
             wchar_t id[APPLICATION_USER_MODEL_ID_MAX_LENGTH];
             UINT32 length = APPLICATION_USER_MODEL_ID_MAX_LENGTH;
             if (GetApplicationUserModelId(process, &length, id) == ERROR_SUCCESS) app.aumid = id;
             CloseHandle(process);
+        }
+        // Paketli uygulamanın adı Başlat menüsündeki addır: dosya açıklaması çoğu zaman yardımcı
+        // sürecin adı ("Windows Terminal Host", "Application Frame Host").
+        if (!app.aumid.empty()) {
+            auto cached = c.names.find(L"aumid:" + app.aumid);
+            std::wstring shellName = cached != c.names.end() ? cached->second : aumidDisplayName(app.aumid);
+            c.names[L"aumid:" + app.aumid] = shellName;
+            if (!shellName.empty()) app.name = shellName;
         }
     }
     app.windows.push_back(window);

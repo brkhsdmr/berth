@@ -680,8 +680,8 @@ void SettingsWindow::buildPage() {
     case 3: {
         statusCard_ = card(88, 76, 0xE7F8, tx(L"Durum", L"Status"), remoteStatus_, 180);
         card(172, 76, 0xE774, tx(L"Mac'in adı", L"Mac name"),
-             tx(L"Tailscale ya da yerel ağdaki adı. Mac'te Ayarlar > Açılış > Uzak masaüstü'nde yazar.",
-                L"Its name on Tailscale or the local network, shown on the Mac in Ayarlar > Açılış > Uzak masaüstü."),
+             tx(L"Tailscale ya da yerel ağdaki adı. Mac'te Berth ayarlarının Windows bağlantısı sayfasında yazar.",
+                L"Its name on Tailscale or the local network, shown on the Mac under Berth Settings > Windows connection."),
              300);
         addField(IdRemoteHost, 0, right - 280, 172 + 22, 280);
         card(256, 76, 0xE72E, tx(L"Eşleştirme kodu", L"Pairing code"),

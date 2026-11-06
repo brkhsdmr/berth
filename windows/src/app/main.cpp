@@ -985,8 +985,8 @@ void App::renderBack() {
         rt->DrawTextLayout(D2D1::Point2F(float(rect.x - 6 * s), float(rect.bottom() + 3 * s)), layout.Get(), white.Get());
     }
 
-    // Arama kutusu
-    {
+    // Arama kutusu. Uygulama paneli açıkken arama satırı panelin içindedir; arkada ikincisi görünmesin.
+    if (appResults_.empty() || query_.empty()) {
         const Rect& r = hintRect_;
         double h = r.h;
         bool typing = searchFocused_ || !query_.empty();
