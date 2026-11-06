@@ -6,6 +6,8 @@ Mission Control and Task View rearrange everything each time you open them. Bert
 
 Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
+![Berth on macOS: pinned apps with live previews, the desktop strip at the top](docs/images/scene.jpg)
+
 ## Features
 
 - **Fixed places.** Pin apps to cells (small, medium or large); the layout stays the same every time. Apps you haven't pinned sit in a row at the bottom.
@@ -18,6 +20,11 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 - **Dock and taskbar previews.** Hover an icon to see that app's windows on every desktop.
 - **Mac ↔ Windows bridge.** When you're connected to a Windows PC with Microsoft's Windows App (Remote Desktop), swiping up on the Mac trackpad opens Berth on that PC instead.
 - **Private by design.** No account, no analytics, no network unless you turn on the Mac–Windows bridge. See [privacy](store/privacy.md).
+
+<table><tr>
+<td width="62%"><img src="docs/images/search.jpg" alt="Typing in the search box filters windows and shows matching apps, including ones that aren't running"></td>
+<td><img src="docs/images/settings.png" alt="The settings window: keyboard shortcut, trackpad gesture and a hot corner picker"></td>
+</tr></table>
 
 ## Requirements
 

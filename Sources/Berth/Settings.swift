@@ -228,7 +228,8 @@ final class SettingsWindowController {
 
     private func makeWindow() -> NSWindow {
         let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, store: store, layouts: layouts, layoutActions: layoutActions)))
-        // Başlık bölümün adıdır (navigationTitle); Pencere menüsünde de o görünür.
+        // Başlık bölümün adıdır (navigationTitle); o gelene kadar boş başlık "Adsız" görünmesin.
+        window.title = "Berth"
         // Bölünmüş görünüm araç çubuğunu başlıkla birleştirir: Sistem Ayarları gibi.
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.toolbarStyle = .unified

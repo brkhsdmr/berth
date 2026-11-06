@@ -6,6 +6,8 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 Ücretsiz ve açık kaynak (GPL-3.0). [English](README.md)
 
+![macOS'ta Berth: canlı önizlemeli sabit uygulamalar, üstte masaüstü şeridi](docs/images/scene.jpg)
+
 ## Özellikler
 
 - **Sabit yerler.** Uygulamaları hücrelere sabitlersin (küçük, orta, büyük); yerleşim her açılışta aynıdır. Sabitlenmemiş uygulamalar altta bir sırada durur.
@@ -18,6 +20,11 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 - **Dock ve görev çubuğu önizlemeleri.** Bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki pencereleri görünür.
 - **Mac ↔ Windows köprüsü.** Microsoft'un Windows App'i (Uzak Masaüstü) ile bir Windows bilgisayara bağlıyken Mac trackpad'inde yukarı kaydırmak, o bilgisayardaki Berth'i açar.
 - **Gizlilik.** Hesap yok, analiz yok. Mac–Windows köprüsünü açmadıkça ağ bağlantısı da yok. Bkz. [gizlilik](store/privacy.md).
+
+<table><tr>
+<td width="62%"><img src="docs/images/search.jpg" alt="Arama kutusuna yazınca pencereler süzülür, açık olmayanlar dahil uygulamalar görünür"></td>
+<td><img src="docs/images/settings.png" alt="Ayarlar penceresi: klavye kısayolu, trackpad hareketi ve sıcak köşe seçici"></td>
+</tr></table>
 
 ## Gereksinimler
 

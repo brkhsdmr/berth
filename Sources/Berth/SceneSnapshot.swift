@@ -76,6 +76,31 @@ struct SceneSnapshot {
     }
 }
 
+#if DEBUG
+/// Ekran görüntüsü için demo modu (yalnızca debug derlemede): `defaults write io.github.brkhsdmr.berth
+/// demoApps -array com.apple.Safari …` verilince sahne yalnızca bu uygulamaları gösterir; diğer
+/// pencereler ve yalnızca onların bulunduğu tam ekran alanlar görünmez. Silince mod kapanır.
+enum DemoMode {
+    static var apps: [String]? {
+        guard let list = UserDefaults.standard.stringArray(forKey: "demoApps"), !list.isEmpty else { return nil }
+        return list
+    }
+}
+
+extension SceneSnapshot {
+    func demoFiltered() -> SceneSnapshot {
+        guard let demo = DemoMode.apps else { return self }
+        let keep = Set(demo)
+        var copy = self
+        copy.apps = apps.filter { keep.contains($0.key) }
+        copy.spaces = spaces.filter { space in
+            !space.isFullScreen || copy.apps.values.contains { $0.windows.contains { $0.spaceID == space.id } }
+        }
+        return copy
+    }
+}
+#endif
+
 /// Sistemden o anki durumu okur. Yoklama yok: yalnızca kaplama açılırken çağrılır.
 @MainActor
 enum SceneSource {
@@ -260,7 +285,11 @@ enum SceneSource {
         }
 
         let current = spaces.first { $0.isCurrent }
-        return SceneSnapshot(apps: apps, spaces: spaces, currentSpaceIsFullScreen: current?.isFullScreen ?? false)
+        var snapshot = SceneSnapshot(apps: apps, spaces: spaces, currentSpaceIsFullScreen: current?.isFullScreen ?? false)
+        #if DEBUG
+        snapshot = snapshot.demoFiltered()
+        #endif
+        return snapshot
     }
 
     // MARK: - Masaüstleri

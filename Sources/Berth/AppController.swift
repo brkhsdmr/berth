@@ -351,6 +351,16 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens[0]
     }
 
+    /// Sahnede kullanılan düzen. Demo modunda (debug) demo uygulamaları sırayla sabitlenir, kayıt değişmez.
+    private var sceneArrangement: Arrangement {
+        #if DEBUG
+        if let demo = DemoMode.apps {
+            return Arrangement(pinned: demo, sizes: store.arrangement.sizes.filter { demo.contains($0.key) })
+        }
+        #endif
+        return store.arrangement
+    }
+
     private func open() {
         guard !isClosing, !isPlacingSpace else { return }
         dockPreview.hide()
@@ -378,7 +388,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         scene.frame = CGRect(origin: .zero, size: screen.frame.size)
         scene.present(SceneContent(
             snapshot: snapshot,
-            arrangement: store.arrangement,
+            arrangement: sceneArrangement,
             usable: usable,
             screenOrigin: CGDisplayBounds(screen.displayID).origin,
             backingScale: screen.backingScaleFactor,

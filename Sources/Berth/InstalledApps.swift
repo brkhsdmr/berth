@@ -49,6 +49,26 @@ final class InstalledApps: @unchecked Sendable {
         return ranked.prefix(limit).map { $0.app }
     }
 
+    /// Uygulamanın adı Berth'in dilinde: önce InfoPlist.loctable (macOS'un kendi uygulamaları),
+    /// sonra dil klasöründeki InfoPlist.strings. Çeviri yoksa nil.
+    private static func localizedName(_ bundle: Bundle) -> String? {
+        let wanted = L10n.english ? "en" : "tr"
+        guard let language = Bundle.preferredLocalizations(from: bundle.localizations, forPreferences: [wanted]).first else { return nil }
+        func pick(_ table: [String: Any]?) -> String? {
+            (table?["CFBundleDisplayName"] as? String) ?? (table?["CFBundleName"] as? String)
+        }
+        if let path = bundle.path(forResource: "InfoPlist", ofType: "loctable"),
+           let all = NSDictionary(contentsOfFile: path) as? [String: Any],
+           let name = pick(all[language] as? [String: Any]) {
+            return name
+        }
+        if let path = bundle.path(forResource: "InfoPlist", ofType: "strings", inDirectory: nil, forLocalization: language),
+           let name = pick(NSDictionary(contentsOfFile: path) as? [String: Any]) {
+            return name
+        }
+        return nil
+    }
+
     private static func scan() -> [App] {
         let manager = FileManager.default
         let roots = [
@@ -61,11 +81,22 @@ final class InstalledApps: @unchecked Sendable {
             let bundle = Bundle(url: url)
             let id = bundle?.bundleIdentifier
             guard seen.insert(id ?? url.path).inserted else { return }
-            var name = manager.displayName(atPath: url.path)
+            // Ad uygulamanın kendi çeviri tablosundan, Berth'in diliyle: Finder'ın adı sistem
+            // dilinde kalıyor, Berth'in dili farklıysa ızgarada iki dil karışıyordu.
+            let base = (bundle?.infoDictionary?["CFBundleDisplayName"] as? String) ?? (bundle?.infoDictionary?["CFBundleName"] as? String)
+            // İngilizce çoğu zaman tabloda değil, uygulamanın temel adıdır (Calculator).
+            var name = bundle.flatMap(Self.localizedName)
+                ?? (L10n.english ? base : nil)
+                ?? manager.displayName(atPath: url.path)
             if name.hasSuffix(".app") { name = String(name.dropLast(4)) }
             result.append(App(name: name, url: url, bundleID: id))
         }
-        for root in roots {
+        var folders = roots
+        #if DEBUG
+        // Demo modunda (ekran görüntüsü) yalnızca macOS'un kendi uygulamaları.
+        if DemoMode.apps != nil { folders = ["/System/Applications", "/System/Applications/Utilities"] }
+        #endif
+        for root in folders {
             guard let items = try? manager.contentsOfDirectory(at: URL(fileURLWithPath: root), includingPropertiesForKeys: nil) else { continue }
             for item in items {
                 if item.pathExtension == "app" {
