@@ -37,6 +37,25 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 </details>
 
+### Windows'ta
+
+Windows 11'de aynı sahne: canlı DWM önizlemeleri, sanal masaüstü şeridi ve kurulu uygulamalar için simge ızgarası.
+
+![Windows 11'de Berth: sabit hücrelerde uygulamalar, açık olmayanlar boş yer olarak (pencere içerikleri bu görüntü için pikselleştirildi)](docs/images/windows-scene.jpg)
+
+![“note” yazınca Not Defteri penceresi öne çıkar, adı uyan kurulu uygulamalar listelenir](docs/images/windows-search.jpg)
+
+<details>
+<summary>Daha fazla görüntü: Windows ayarları</summary>
+
+| | |
+|---|---|
+| ![Açılış](docs/images/windows-settings-opening.png) | ![Sabit uygulamalar](docs/images/windows-settings-pinned.png) |
+| ![Çalışma düzenleri](docs/images/windows-settings-layouts.png) | ![Mac bağlantısı](docs/images/windows-settings-mac.png) |
+| ![Genel](docs/images/windows-settings-general.png) | |
+
+</details>
+
 ## Gereksinimler
 
 | | macOS | Windows |

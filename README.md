@@ -37,6 +37,25 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
 </details>
 
+### On Windows
+
+The same scene on Windows 11, with live DWM thumbnails, the virtual desktop strip and an icon grid for installed apps.
+
+![Berth on Windows 11: pinned apps in fixed cells, apps that aren't running shown as empty places (window contents pixelated for this screenshot)](docs/images/windows-scene.jpg)
+
+![Typing "note" highlights the Notepad window and lists matching installed apps](docs/images/windows-search.jpg)
+
+<details>
+<summary>More screenshots: Windows settings</summary>
+
+| | |
+|---|---|
+| ![Opening](docs/images/windows-settings-opening.png) | ![Pinned apps](docs/images/windows-settings-pinned.png) |
+| ![Workspace layouts](docs/images/windows-settings-layouts.png) | ![Mac connection](docs/images/windows-settings-mac.png) |
+| ![General](docs/images/windows-settings-general.png) | |
+
+</details>
+
 ## Requirements
 
 | | macOS | Windows |
