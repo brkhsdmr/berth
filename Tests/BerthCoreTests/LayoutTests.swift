@@ -148,6 +148,15 @@ final class ArrangementTests: XCTestCase {
 }
 
 final class SpaceNamingTests: XCTestCase {
+    override func setUp() { L10n.english = false }
+    override func tearDown() { L10n.english = L10n.resolve(.automatic) }
+
+    func testEnglishLabels() {
+        L10n.english = true
+        let labels = SpaceNaming.labels([.init(isFullScreen: false, name: ""), .init(isFullScreen: true, name: ""), .init(isFullScreen: false, name: "")])
+        XCTAssertEqual(labels, ["Desktop 1", "Full screen", "Desktop 2"])
+    }
+
     func testSingleDesktopHasNoNumber() {
         // Bu makinede ölçülen yapı: tam ekran, masaüstü, tam ekran.
         let labels = SpaceNaming.labels([
@@ -381,6 +390,14 @@ final class DockEdgeTests: XCTestCase {
 }
 
 final class WindowNamingTests: XCTestCase {
+    override func setUp() { L10n.english = false }
+    override func tearDown() { L10n.english = L10n.resolve(.automatic) }
+
+    func testEnglishDisplay() {
+        L10n.english = true
+        XCTAssertEqual(WindowNaming.display(title: "", appName: "Chrome", index: 1, windowCount: 3), "Chrome · Window 2")
+    }
+
     func testDisplay() {
         XCTAssertEqual(WindowNaming.display(title: "Rapor", appName: "Chrome", index: 1, windowCount: 3), "Rapor")
         XCTAssertEqual(WindowNaming.display(title: "", appName: "Chrome", index: 1, windowCount: 3), "Chrome · Pencere 2")
@@ -564,8 +581,12 @@ final class WorkspaceLayoutTests: XCTestCase {
     }
 
     func testNextName() {
+        L10n.english = false
+        defer { L10n.english = L10n.resolve(.automatic) }
         XCTAssertEqual(LayoutMatcher.nextName(existing: []), "Düzen 1")
         XCTAssertEqual(LayoutMatcher.nextName(existing: ["Düzen 1", "Düzen 3"]), "Düzen 2")
+        L10n.english = true
+        XCTAssertEqual(LayoutMatcher.nextName(existing: ["Layout 1"]), "Layout 2")
     }
 
     func testCodableRoundTrip() throws {

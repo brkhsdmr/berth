@@ -1,4 +1,5 @@
 import AppKit
+import BerthCore
 import ApplicationServices
 import CoreGraphics
 import Foundation
@@ -51,31 +52,31 @@ enum WindowActionError: Error, Equatable, CustomStringConvertible {
     var description: String {
         switch self {
         case .accessibilityDenied:
-            return "Erişilebilirlik izni yok. Sistem Ayarları > Gizlilik ve Güvenlik > Erişilebilirlik bölümünden bu uygulamaya izin verin."
+            return tx("Erişilebilirlik izni yok. Sistem Ayarları > Gizlilik ve Güvenlik > Erişilebilirlik bölümünden bu uygulamaya izin verin.", "No Accessibility access. Allow this app in System Settings > Privacy & Security > Accessibility.")
         case .applicationGone:
-            return "Uygulama artık çalışmıyor."
+            return tx("Uygulama artık çalışmıyor.", "The app is no longer running.")
         case .windowNotFound:
-            return "Pencere bulunamadı; kapatılmış ya da başka bir uygulamaya devredilmiş olabilir."
+            return tx("Pencere bulunamadı; kapatılmış ya da başka bir uygulamaya devredilmiş olabilir.", "Window not found; it may have been closed or handed to another app.")
         case .unsupported(let reason):
             return reason
         case .axFailed(let code):
-            return "Erişilebilirlik çağrısı başarısız oldu: \(WindowActionError.axReason(code)) (kod \(code))."
+            return tx("Erişilebilirlik çağrısı başarısız oldu: \(WindowActionError.axReason(code)) (kod \(code)).", "An Accessibility call failed: \(WindowActionError.axReason(code)) (code \(code)).")
         }
     }
 
     /// Ham `AXError` değerinin Türkçe karşılığı.
     private static func axReason(_ code: Int32) -> String {
         switch code {
-        case -25200: return "genel hata"
-        case -25201: return "geçersiz argüman"
-        case -25202: return "pencere geçersiz"
-        case -25204: return "uygulama yanıt vermedi"
-        case -25205: return "özellik desteklenmiyor"
-        case -25206: return "eylem desteklenmiyor"
-        case -25208: return "uygulama bu çağrıyı uygulamamış"
-        case -25211: return "erişilebilirlik API'si kapalı"
-        case -25212: return "değer yok"
-        default: return "bilinmeyen hata"
+        case -25200: return tx("genel hata", "general failure")
+        case -25201: return tx("geçersiz argüman", "invalid argument")
+        case -25202: return tx("pencere geçersiz", "invalid window")
+        case -25204: return tx("uygulama yanıt vermedi", "the app didn't respond")
+        case -25205: return tx("özellik desteklenmiyor", "attribute not supported")
+        case -25206: return tx("eylem desteklenmiyor", "action not supported")
+        case -25208: return tx("uygulama bu çağrıyı uygulamamış", "the app doesn't implement this call")
+        case -25211: return tx("erişilebilirlik API'si kapalı", "the Accessibility API is disabled")
+        case -25212: return tx("değer yok", "no value")
+        default: return tx("bilinmeyen hata", "unknown error")
         }
     }
 }
@@ -247,7 +248,7 @@ enum WindowActivator {
     private static func exitFullScreen(_ window: AXUIElement) async throws {
         let error = setAttribute(window, "AXFullScreen", false as CFTypeRef)
         if error == .attributeUnsupported || error == .actionUnsupported {
-            throw WindowActionError.unsupported("Bu pencere tam ekrandan çıkarılamıyor.")
+            throw WindowActionError.unsupported(tx("Bu pencere tam ekrandan çıkarılamıyor.", "This window can't leave full screen."))
         }
 
         for _ in 0..<20 {
@@ -256,7 +257,7 @@ enum WindowActivator {
         }
 
         guard boolAttribute(window, "AXFullScreen") != true else {
-            throw WindowActionError.unsupported("Pencere tam ekrandan çıkmadı; yerleştirme yapılamadı.")
+            throw WindowActionError.unsupported(tx("Pencere tam ekrandan çıkmadı; yerleştirme yapılamadı.", "The window didn't leave full screen, so it couldn't be placed."))
         }
 
         // Space çöküşü ve pencerenin masaüstüne oturması için ek soluk.
@@ -286,7 +287,7 @@ enum WindowActivator {
     ///   kare tutmuyorsa `WindowActionError`.
     static func placeWindow(pid: pid_t, title: String, frame: CGRect, order: Int, to target: CGRect) async throws {
         guard target.width > 0, target.height > 0 else {
-            throw WindowActionError.unsupported("Geçersiz hedef kare; pencere yerleştirilemedi.")
+            throw WindowActionError.unsupported(tx("Geçersiz hedef kare; pencere yerleştirilemedi.", "Invalid target frame; the window couldn't be placed."))
         }
 
         // Pencereyi bulmak `withWindow`'un işi: başka bir Space'teki pencereler
@@ -344,7 +345,7 @@ enum WindowActivator {
             // Öznitelik hiç desteklenmiyorsa tekrar denemek zaman kaybı:
             // yardımcı paneller ve bazı sistem pencereleri taşınamaz.
             if positionError == .attributeUnsupported || sizeError == .attributeUnsupported {
-                throw WindowActionError.unsupported("Bu pencere taşınamıyor veya yeniden boyutlandırılamıyor.")
+                throw WindowActionError.unsupported(tx("Bu pencere taşınamıyor veya yeniden boyutlandırılamıyor.", "This window can't be moved or resized."))
             }
             if positionError != .success { lastFailure = positionError }
             if sizeError != .success { lastFailure = sizeError }
@@ -399,7 +400,7 @@ enum WindowActivator {
         }
         // Buraya yalnızca KONUM tutmadığında geliyoruz; boyut zaten hoş görülüyor.
         throw WindowActionError.unsupported(
-            "Pencere istenen konuma yerleşmedi; Stage Manager kareyi geri alıyor olabilir."
+            tx("Pencere istenen konuma yerleşmedi; Stage Manager kareyi geri alıyor olabilir.", "The window didn't land where requested; Stage Manager may be moving it back.")
         )
     }
 
@@ -521,7 +522,7 @@ enum WindowActivator {
     static func closeWindow(pid: pid_t, title: String, frame: CGRect, order: Int) async throws {
         try await withWindow(pid: pid, title: title, frame: frame, order: order) { window in
             guard let button = elementAttribute(window, kAXCloseButtonAttribute) else {
-                throw WindowActionError.unsupported("Bu pencerenin kapatma düğmesi yok; kapatılamıyor.")
+                throw WindowActionError.unsupported(tx("Bu pencerenin kapatma düğmesi yok; kapatılamıyor.", "This window has no close button, so it can't be closed."))
             }
 
             let error = performAction(button, kAXPressAction)
@@ -547,7 +548,7 @@ enum WindowActivator {
         let app = try runningApplication(pid: pid)
         guard !app.isHidden else { return }
         guard app.hide() else {
-            throw WindowActionError.unsupported("\(displayName(app)) gizlenemedi.")
+            throw WindowActionError.unsupported(tx("\(displayName(app)) gizlenemedi.", "Couldn't hide \(displayName(app))."))
         }
     }
 
@@ -559,7 +560,7 @@ enum WindowActivator {
     static func quitApp(pid: pid_t) throws {
         let app = try runningApplication(pid: pid)
         guard app.terminate() else {
-            throw WindowActionError.unsupported("\(displayName(app)) için çıkış isteği gönderilemedi.")
+            throw WindowActionError.unsupported(tx("\(displayName(app)) için çıkış isteği gönderilemedi.", "Couldn't ask \(displayName(app)) to quit."))
         }
     }
 
@@ -579,7 +580,7 @@ enum WindowActivator {
         }
         let error = setAttribute(window, "AXFullScreen", true as CFTypeRef)
         if error == .attributeUnsupported || error == .actionUnsupported {
-            throw WindowActionError.unsupported("Bu pencere tam ekran yapılamıyor.")
+            throw WindowActionError.unsupported(tx("Bu pencere tam ekran yapılamıyor.", "This window can't enter full screen."))
         }
         guard error == .success else { throw WindowActionError.axFailed(error.rawValue) }
     }
@@ -926,13 +927,13 @@ enum WindowActivator {
         }
         guard activated else {
             if app.isTerminated { throw WindowActionError.applicationGone }
-            throw WindowActionError.unsupported("\(displayName(app)) öne getirilemedi.")
+            throw WindowActionError.unsupported(tx("\(displayName(app)) öne getirilemedi.", "Couldn't bring \(displayName(app)) to the front."))
         }
     }
 
     /// Hata metinlerinde kullanılacak, kullanıcının tanıyacağı ad.
     private static func displayName(_ app: NSRunningApplication) -> String {
-        app.localizedName ?? app.bundleIdentifier ?? "Uygulama"
+        app.localizedName ?? app.bundleIdentifier ?? tx("Uygulama", "App")
     }
 
     // MARK: - AX kurulumu

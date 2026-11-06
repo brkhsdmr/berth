@@ -519,7 +519,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         ).integral
         close()
         Task { @MainActor [weak self] in
-            await self?.snap(window, to: target, label: "Diğer ekrana taşı")
+            await self?.snap(window, to: target, label: tx("Diğer ekrana taşı", "Move to next display"))
         }
     }
 
@@ -629,7 +629,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
             guard let error else { return }
-            let message = "\(entry.title) açılamadı: \(error.localizedDescription)"
+            let message = tx("\(entry.title) açılamadı: \(error.localizedDescription)", "Couldn't open \(entry.title): \(error.localizedDescription)")
             DispatchQueue.main.async { MainActor.assumeIsolated { Toast.show(message) } }
         }
     }
@@ -698,7 +698,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         } else {
             guard names.contains(where: { title.localizedCaseInsensitiveContains($0) }) else { return false }
             guard remoteBridge.sendToggle() else {
-                Toast.show("Windows'taki Berth bu Mac'e bağlı değil.")
+                Toast.show(tx("Windows'taki Berth bu Mac'e bağlı değil.", "Berth on Windows isn't connected to this Mac."))
                 return true
             }
         }
@@ -763,7 +763,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
                     try? await Task.sleep(nanoseconds: 100_000_000)
                 }
                 guard spaceID != nil else {
-                    throw WindowActionError.unsupported("Pencere tam ekrana geçmedi; bu uygulama desteklemiyor olabilir.")
+                    throw WindowActionError.unsupported(tx("Pencere tam ekrana geçmedi; bu uygulama desteklemiyor olabilir.", "The window didn't enter full screen; this app may not support it."))
                 }
                 // Tam ekran geçiş animasyonu sürerken Mission Control açılmıyor.
                 try? await Task.sleep(nanoseconds: 900_000_000)
@@ -775,7 +775,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             Toast.show(error.description)
         } catch {
             log.error("Alan sırası değiştirilemedi: \(String(describing: error), privacy: .public)")
-            Toast.show("Pencere tam ekran oldu ama istediğin yere taşınamadı. Mission Control'den elle taşıyabilirsin.")
+            Toast.show(tx("Pencere tam ekran oldu ama istediğin yere taşınamadı. Mission Control'den elle taşıyabilirsin.", "The window went full screen but couldn't be moved where you wanted. You can move it in Mission Control."))
         }
     }
 
@@ -950,17 +950,17 @@ extension AppController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let openItem = NSMenuItem(title: "Aç (\(settings.shortcut.display))", action: #selector(toggleFromMenu), keyEquivalent: "")
+        let openItem = NSMenuItem(title: tx("Aç (\(settings.shortcut.display))", "Open (\(settings.shortcut.display))"), action: #selector(toggleFromMenu), keyEquivalent: "")
         openItem.target = self
         menu.addItem(openItem)
 
-        let settingsItem = NSMenuItem(title: "Ayarlar…", action: #selector(showSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: tx("Ayarlar…", "Settings…"), action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         // Çalışma düzenleri
-        let saveItem = NSMenuItem(title: "Çalışma düzenini kaydet…", action: #selector(saveLayoutFromMenu), keyEquivalent: "")
+        let saveItem = NSMenuItem(title: tx("Çalışma düzenini kaydet…", "Save Workspace Layout…"), action: #selector(saveLayoutFromMenu), keyEquivalent: "")
         saveItem.target = self
         menu.addItem(saveItem)
         if !layoutStore.layouts.isEmpty {
@@ -970,29 +970,29 @@ extension AppController: NSMenuDelegate {
                 let restore = NSMenuItem(title: layout.name, action: #selector(restoreLayoutFromMenu(_:)), keyEquivalent: "")
                 restore.target = self
                 restore.representedObject = layout.name
-                restore.toolTip = "\(layout.windows.count) pencere, \(layout.savedAt.formatted(date: .abbreviated, time: .shortened))"
+                restore.toolTip = tx("\(layout.windows.count) pencere, \(layout.savedAt.formatted(date: .abbreviated, time: .shortened))", "\(layout.windows.count) windows, \(layout.savedAt.formatted(date: .abbreviated, time: .shortened))")
                 restoreMenu.addItem(restore)
                 let delete = NSMenuItem(title: layout.name, action: #selector(deleteLayoutFromMenu(_:)), keyEquivalent: "")
                 delete.target = self
                 delete.representedObject = layout.name
                 deleteMenu.addItem(delete)
             }
-            let restoreItem = NSMenuItem(title: "Çalışma düzenini yükle", action: nil, keyEquivalent: "")
+            let restoreItem = NSMenuItem(title: tx("Çalışma düzenini yükle", "Restore Workspace Layout"), action: nil, keyEquivalent: "")
             restoreItem.submenu = restoreMenu
             menu.addItem(restoreItem)
-            let deleteItem = NSMenuItem(title: "Çalışma düzenini sil", action: nil, keyEquivalent: "")
+            let deleteItem = NSMenuItem(title: tx("Çalışma düzenini sil", "Delete Workspace Layout"), action: nil, keyEquivalent: "")
             deleteItem.submenu = deleteMenu
             menu.addItem(deleteItem)
         }
         menu.addItem(.separator())
 
         if settings.windowPreviewsEnabled, !Permissions.screenRecording {
-            let item = NSMenuItem(title: "Ekran Kaydı iznini ver…", action: #selector(openScreenRecording), keyEquivalent: "")
+            let item = NSMenuItem(title: tx("Ekran Kaydı iznini ver…", "Grant Screen Recording Access…"), action: #selector(openScreenRecording), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
         if !Permissions.accessibility {
-            let item = NSMenuItem(title: "Erişilebilirlik iznini ver…", action: #selector(openAccessibility), keyEquivalent: "")
+            let item = NSMenuItem(title: tx("Erişilebilirlik iznini ver…", "Grant Accessibility Access…"), action: #selector(openAccessibility), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
@@ -1000,7 +1000,7 @@ extension AppController: NSMenuDelegate {
             menu.addItem(.separator())
         }
 
-        let quit = NSMenuItem(title: "Berth'ten Çık", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: tx("Berth'ten Çık", "Quit Berth"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
@@ -1048,7 +1048,7 @@ extension AppController: NSMenuDelegate {
     @objc private func deleteLayoutFromMenu(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         layoutStore.remove(named: name)
-        Toast.show("\(name) silindi.")
+        Toast.show(tx("\(name) silindi.", "\(name) deleted."))
     }
     @objc fileprivate func showSettings() {
         close(animated: false)

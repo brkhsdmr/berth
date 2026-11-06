@@ -6,9 +6,9 @@ public enum SnapPosition: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .leftHalf: return "Sola yasla"
-        case .rightHalf: return "Sağa yasla"
-        case .fill: return "Ekranı kapla"
+        case .leftHalf: return tx("Sola yasla", "Snap left")
+        case .rightHalf: return tx("Sağa yasla", "Snap right")
+        case .fill: return tx("Ekranı kapla", "Fill screen")
         }
     }
 

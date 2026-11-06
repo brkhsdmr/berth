@@ -25,7 +25,7 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 |---|---|---|
 | Sürüm | macOS 14 ve sonrası | Windows 11 |
 | İzinler | Erişilebilirlik (pencereye geçme, taşıma); Ekran Kaydı isteğe bağlı (canlı önizlemeler) | yok |
-| Arayüz | Türkçe (İngilizce planlanıyor) | Türkçe ve İngilizce |
+| Arayüz | Türkçe ve İngilizce | Türkçe ve İngilizce |
 
 ## Kurulum
 

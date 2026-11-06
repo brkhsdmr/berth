@@ -60,10 +60,10 @@ public enum SpaceNaming {
         var desktopIndex = 0
         return spaces.map { space in
             if space.isFullScreen {
-                return space.name.isEmpty ? "Tam ekran" : space.name
+                return space.name.isEmpty ? tx("Tam ekran", "Full screen") : space.name
             }
             desktopIndex += 1
-            return desktops > 1 ? "Masaüstü \(desktopIndex)" : "Masaüstü"
+            return desktops > 1 ? tx("Masaüstü \(desktopIndex)", "Desktop \(desktopIndex)") : tx("Masaüstü", "Desktop")
         }
     }
 }

@@ -98,7 +98,7 @@ public enum LayoutMatcher {
     /// Kaydedilecek yeni düzenin adı: "Düzen 1", "Düzen 2"… boş olan ilk numara.
     public static func nextName(existing: [String]) -> String {
         var number = 1
-        while existing.contains("Düzen \(number)") { number += 1 }
-        return "Düzen \(number)"
+        while existing.contains(tx("Düzen \(number)", "Layout \(number)")) { number += 1 }
+        return tx("Düzen \(number)", "Layout \(number)")
     }
 }

@@ -248,12 +248,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .opening: return "Açılış"
-        case .pinned: return "Sabit uygulamalar"
-        case .layouts: return "Çalışma düzenleri"
-        case .windows: return "Windows bağlantısı"
-        case .general: return "Genel"
-        case .permissions: return "İzinler"
+        case .opening: return tx("Açılış", "Opening")
+        case .pinned: return tx("Sabit uygulamalar", "Pinned apps")
+        case .layouts: return tx("Çalışma düzenleri", "Workspace layouts")
+        case .windows: return tx("Windows bağlantısı", "Windows connection")
+        case .general: return tx("Genel", "General")
+        case .permissions: return tx("İzinler", "Permissions")
         }
     }
 
@@ -396,13 +396,13 @@ private struct OpenTab: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Klavye kısayoluyla aç", isOn: $settings.shortcutEnabled)
-                LabeledContent("Kısayol") {
+                Toggle(tx("Klavye kısayoluyla aç", "Open with a keyboard shortcut"), isOn: $settings.shortcutEnabled)
+                LabeledContent(tx("Kısayol", "Shortcut")) {
                     HStack(spacing: 8) {
-                        Text(recording ? "Bir kısayola basın…" : settings.shortcut.display)
+                        Text(recording ? tx("Bir kısayola basın…", "Press a shortcut…") : settings.shortcut.display)
                             .monospacedDigit()
                             .foregroundStyle(recording ? .secondary : .primary)
-                        Button(recording ? "Vazgeç" : "Değiştir") { toggleRecording() }
+                        Button(recording ? tx("Vazgeç", "Cancel") : tx("Değiştir", "Change")) { toggleRecording() }
                     }
                 }
                 .disabled(!settings.shortcutEnabled)
@@ -410,17 +410,17 @@ private struct OpenTab: View {
                     Text(shortcutMessage).font(.callout).foregroundStyle(.red)
                 }
             } header: {
-                Text("Klavye")
+                Text(tx("Klavye", "Keyboard"))
             } footer: {
-                Text("Aynı kısayol sahne açıkken kapatır. Menü çubuğu simgesine tıklamak da açar ya da kapatır.")
+                Text(tx("Aynı kısayol sahne açıkken kapatır. Menü çubuğu simgesine tıklamak da açar ya da kapatır.", "The same shortcut closes the scene when it's open. Clicking the menu bar icon also opens or closes it."))
                     .font(.callout).foregroundStyle(.secondary)
             }
 
             Section {
-                Picker("Yukarı kaydırma", selection: $settings.trackpadFingers) {
-                    Text("Kapalı").tag(0)
-                    Text("3 parmak").tag(3)
-                    Text("4 parmak").tag(4)
+                Picker(tx("Yukarı kaydırma", "Swipe up"), selection: $settings.trackpadFingers) {
+                    Text(tx("Kapalı", "Off")).tag(0)
+                    Text(tx("3 parmak", "3 fingers")).tag(3)
+                    Text(tx("4 parmak", "4 fingers")).tag(4)
                 }
                 Text(trackpadNote)
                     .font(.callout)
@@ -435,26 +435,26 @@ private struct OpenTab: View {
                     HotCornerPicker(corner: $settings.hotCorner)
                     Spacer()
                 }
-                Picker("Köşede bekleme", selection: $settings.hotCornerDelay) {
-                    Text("Hemen").tag(0.0)
-                    Text("0,25 sn").tag(0.25)
-                    Text("0,5 sn").tag(0.5)
-                    Text("1 sn").tag(1.0)
+                Picker(tx("Köşede bekleme", "Delay in corner"), selection: $settings.hotCornerDelay) {
+                    Text(tx("Hemen", "Immediately")).tag(0.0)
+                    Text(tx("0,25 sn", "0.25 s")).tag(0.25)
+                    Text(tx("0,5 sn", "0.5 s")).tag(0.5)
+                    Text(tx("1 sn", "1 s")).tag(1.0)
                 }
                 .disabled(settings.hotCorner == .none)
                 if let conflict = HotCornerMonitor.systemAction(at: settings.hotCorner) {
                     HStack(alignment: .firstTextBaseline) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        Text("macOS bu köşeye \(conflict) atamış; ikisi birlikte açılır. Sistem Ayarları > Masaüstü ve Dock > Sıcak Köşeler'den kaldırabilirsiniz.")
+                        Text(tx("macOS bu köşeye \(conflict) atamış; ikisi birlikte açılır. Sistem Ayarları > Masaüstü ve Dock > Sıcak Köşeler'den kaldırabilirsiniz.", "macOS has assigned \(conflict) to this corner; both will open. You can remove it in System Settings > Desktop & Dock > Hot Corners."))
                             .font(.callout)
                         Spacer()
-                        Button("Aç") { SystemTrackpad.openHotCornerSettings() }
+                        Button(tx("Aç", "Open")) { SystemTrackpad.openHotCornerSettings() }
                     }
                 }
             } header: {
-                Text("Sıcak köşe")
+                Text(tx("Sıcak köşe", "Hot corner"))
             } footer: {
-                Text("Köşeye tıklayarak seç; seçili köşeye yeniden tıklamak kapatır. İmleç köşeye gelince sahne açılır, açıksa kapanır. Fare düğmesi basılıyken tetiklenmez.")
+                Text(tx("Köşeye tıklayarak seç; seçili köşeye yeniden tıklamak kapatır. İmleç köşeye gelince sahne açılır, açıksa kapanır. Fare düğmesi basılıyken tetiklenmez.", "Click a corner to choose it; click the chosen corner again to turn it off. Moving the pointer into the corner opens the scene, or closes it if open. Not triggered while a mouse button is held."))
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
@@ -464,16 +464,16 @@ private struct OpenTab: View {
 
     private var trackpadNote: String {
         guard settings.trackpadFingers > 0 else {
-            return "Mission Control macOS'ta olduğu gibi çalışır."
+            return tx("Mission Control macOS'ta olduğu gibi çalışır.", "Mission Control works as it does in macOS.")
         }
         let chosen = settings.trackpadFingers
         let other = chosen == 3 ? 4 : 3
-        var lines = ["\(chosen) parmakla yukarı kaydırma sahneyi açar, sahne açıkken aşağı kaydırma kapatır."]
+        var lines = [tx("\(chosen) parmakla yukarı kaydırma sahneyi açar, sahne açıkken aşağı kaydırma kapatır.", "Swiping up with \(chosen) fingers opens the scene; swiping down closes it.")]
         if systemFingers.contains(other) {
-            lines.append("\(other) parmak Mission Control'ü açmaya devam eder.")
+            lines.append(tx("\(other) parmak Mission Control'ü açmaya devam eder.", "\(other) fingers still open Mission Control."))
         }
         if !systemFingers.contains(chosen) {
-            lines.append("macOS bu hareketi başka işe atamış olabilir (örneğin üç parmakla sürükleme); çakışırsa Sistem Ayarları > Trackpad'den kapatın.")
+            lines.append(tx("macOS bu hareketi başka işe atamış olabilir (örneğin üç parmakla sürükleme); çakışırsa Sistem Ayarları > Trackpad'den kapatın.", "macOS may use this gesture for something else (for example three-finger drag); if they clash, turn it off in System Settings > Trackpad."))
         }
         return lines.joined(separator: " ")
     }
@@ -508,7 +508,7 @@ private struct OpenTab: View {
         let shift = flags.contains(.shift)
         let command = flags.contains(.command)
         guard ShortcutFormat.isAcceptable(control: control, option: option, shift: shift, command: command) else {
-            shortcutMessage = "Kısayolda ⌃, ⌥ ya da ⌘ tuşlarından biri olmalı."
+            shortcutMessage = tx("Kısayolda ⌃, ⌥ ya da ⌘ tuşlarından biri olmalı.", "A shortcut needs ⌃, ⌥ or ⌘.")
             return
         }
 
@@ -528,7 +528,7 @@ private struct OpenTab: View {
         )
         stopRecording()
         if !settings.setShortcut(next) {
-            shortcutMessage = "\(next.display) başka bir uygulamada kullanılıyor."
+            shortcutMessage = tx("\(next.display) başka bir uygulamada kullanılıyor.", "\(next.display) is used by another app.")
         }
     }
 }
@@ -538,11 +538,11 @@ private struct WindowsTab: View {
 
     private var connected: Bool { settings.remoteBridgeEnabled && !settings.connectedRemotes.isEmpty }
     private var statusColor: Color { connected ? .green : settings.remoteBridgeEnabled ? .orange : .secondary }
-    private var statusLabel: String { connected ? "Bağlı" : settings.remoteBridgeEnabled ? "Bekleniyor" : "Kapalı" }
+    private var statusLabel: String { connected ? tx("Bağlı", "Connected") : settings.remoteBridgeEnabled ? tx("Bekleniyor", "Waiting") : tx("Kapalı", "Off") }
     private var statusDetail: String {
         if connected { return settings.connectedRemotes.joined(separator: ", ") }
-        if settings.trackpadFingers == 0 { return "Açılış'ta trackpad hareketi kapalı; önce onu açın." }
-        return settings.remoteBridgeEnabled ? "Windows'taki uygulamanın bağlanması bekleniyor." : "Windows'a hareket gönderilmiyor."
+        if settings.trackpadFingers == 0 { return tx("Açılış'ta trackpad hareketi kapalı; önce onu açın.", "The trackpad gesture is off in Opening; turn it on first.") }
+        return settings.remoteBridgeEnabled ? tx("Windows'taki uygulamanın bağlanması bekleniyor.", "Waiting for Berth on Windows to connect.") : tx("Windows'a hareket gönderilmiyor.", "Gestures aren't sent to Windows.")
     }
 
     var body: some View {
@@ -551,7 +551,7 @@ private struct WindowsTab: View {
                 HStack(spacing: 12) {
                     SidebarIcon(symbol: "pc", tint: .teal)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Durum")
+                        Text(tx("Durum", "Status"))
                         Text(statusDetail).font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -565,28 +565,28 @@ private struct WindowsTab: View {
                 }
             }
             Section {
-                Toggle("Windows App oturumunda hareketi Windows'a gönder", isOn: $settings.remoteBridgeEnabled)
+                Toggle(tx("Windows App oturumunda hareketi Windows'a gönder", "Send the gesture to Windows in Windows App sessions"), isOn: $settings.remoteBridgeEnabled)
                     .disabled(settings.trackpadFingers == 0)
                 if settings.remoteBridgeEnabled {
-                    TextField("Oturum adları", text: $settings.remoteSessionNames, prompt: Text("Boşsa: bu Mac'e bağlı Windows'larla eşleşen oturumlar"))
-                    LabeledContent("Bu Mac'in adı") {
+                    TextField(tx("Oturum adları", "Session names"), text: $settings.remoteSessionNames, prompt: Text(tx("Boşsa: bu Mac'e bağlı Windows'larla eşleşen oturumlar", "If empty: sessions matching a Windows PC connected to this Mac")))
+                    LabeledContent(tx("Bu Mac'in adı", "This Mac's name")) {
                         Text(Host.current().localizedName ?? ProcessInfo.processInfo.hostName).textSelection(.enabled)
                     }
-                    LabeledContent("Eşleştirme kodu") {
+                    LabeledContent(tx("Eşleştirme kodu", "Pairing code")) {
                         HStack(spacing: 8) {
                             Text(settings.remoteToken).font(.body.monospaced()).textSelection(.enabled)
-                            Button("Yenile") { settings.renewRemoteToken() }
+                            Button(tx("Yenile", "Renew")) { settings.renewRemoteToken() }
                         }
                     }
-                    LabeledContent("Bağlı") {
-                        Text(settings.connectedRemotes.isEmpty ? "Bağlı Windows yok" : settings.connectedRemotes.joined(separator: ", "))
+                    LabeledContent(tx("Bağlı", "Connected")) {
+                        Text(settings.connectedRemotes.isEmpty ? tx("Bağlı Windows yok", "No Windows connected") : settings.connectedRemotes.joined(separator: ", "))
                             .foregroundStyle(settings.connectedRemotes.isEmpty ? .secondary : .primary)
                     }
                 }
             } header: {
-                Text("Uzak masaüstü (Windows)")
+                Text(tx("Uzak masaüstü (Windows)", "Remote desktop (Windows)"))
             } footer: {
-                Text("Windows'taki Berth ayarlarına bu Mac'in adını ve kodu girin; Windows uygulaması bu Mac'e Tailscale ya da yerel ağ üzerinden bağlanır. Windows App'te o oturum öndeyken yukarı kaydırma oradaki sahneyi açar ya da kapatır. Uygulamanın kurulu olmadığı oturumlarda Mac'in sahnesi açılır.")
+                Text(tx("Windows'taki Berth ayarlarına bu Mac'in adını ve kodu girin; Windows uygulaması bu Mac'e Tailscale ya da yerel ağ üzerinden bağlanır. Windows App'te o oturum öndeyken yukarı kaydırma oradaki sahneyi açar ya da kapatır. Uygulamanın kurulu olmadığı oturumlarda Mac'in sahnesi açılır.", "Enter this Mac's name and the code in Berth's settings on Windows; it connects to this Mac over Tailscale or the local network. While that session is in front in Windows App, swiping up opens or closes the scene there. In sessions without Berth, the Mac's scene opens."))
                     .font(.callout).foregroundStyle(.secondary)
             }
 
@@ -597,37 +597,66 @@ private struct WindowsTab: View {
 
 private struct UsageTab: View {
     @ObservedObject var settings: AppSettings
+    @AppStorage("language") private var language = L10n.Language.automatic.rawValue
+    @State private var languageAtLaunch = UserDefaults.standard.integer(forKey: "language")
+
+    /// Uygulamanın yeni bir kopyasını açıp bu kopyayı kapatır.
+    static func relaunch() {
+        let url = Bundle.main.bundleURL
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 0.6; /usr/bin/open \"$0\"", url.path]
+        try? task.run()
+        NSApp.terminate(nil)
+    }
+
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–" }
 
     var body: some View {
         Form {
             Section {
-                Toggle("Pencerelerin gerçek görüntüsünü göster", isOn: $settings.windowPreviewsEnabled)
+                Picker(tx("Dil", "Language"), selection: $language) {
+                    Text(tx("Sistem dili", "System language")).tag(L10n.Language.automatic.rawValue)
+                    Text("Türkçe").tag(L10n.Language.turkish.rawValue)
+                    Text("English").tag(L10n.Language.english.rawValue)
+                }
+                if language != languageAtLaunch {
+                    HStack {
+                        Text(tx("Yeni dil Berth yeniden başlatılınca geçerli olur.", "The new language takes effect after Berth restarts."))
+                            .font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(tx("Şimdi yeniden başlat", "Restart now")) { Self.relaunch() }
+                    }
+                }
+            }
+            Section {
+                Toggle(tx("Pencerelerin gerçek görüntüsünü göster", "Show live window previews"), isOn: $settings.windowPreviewsEnabled)
                 Text(settings.windowPreviewsEnabled
-                     ? "Ekran Kaydı izni gerekir. Görüntüler yalnızca sahne ya da Dock önizlemesi açılınca alınır; macOS bu sırada kayıt göstergesini gösterebilir."
-                     : "Hiç ekran yakalaması yapılmaz; izin daha önce verilmiş olsa bile kullanılmaz. Pencereler simge ve başlıkla gösterilir. Başka masaüstündeki pencerelerin başlığı görünmeyebilir.")
+                     ? tx("Ekran Kaydı izni gerekir. Görüntüler yalnızca sahne ya da Dock önizlemesi açılınca alınır; macOS bu sırada kayıt göstergesini gösterebilir.", "Needs Screen Recording access. Images are captured only while the scene or a Dock preview is open; macOS may show its recording indicator then.")
+                     : tx("Hiç ekran yakalaması yapılmaz; izin daha önce verilmiş olsa bile kullanılmaz. Pencereler simge ve başlıkla gösterilir. Başka masaüstündeki pencerelerin başlığı görünmeyebilir.", "Nothing on screen is captured, even if access was granted before. Windows are shown with their icon and title. Titles of windows on other desktops may not be available."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Pencere önizlemeleri")
+                Text(tx("Pencere önizlemeleri", "Window previews"))
             }
             Section("Dock") {
-                Toggle("Dock simgesinin üstüne gelince pencereleri göster", isOn: $settings.dockPreviewsEnabled)
-                Text("Uygulamanın tüm masaüstlerindeki pencereleri simgenin yanında önizlenir.")
+                Toggle(tx("Dock simgesinin üstüne gelince pencereleri göster", "Show windows when hovering a Dock icon"), isOn: $settings.dockPreviewsEnabled)
+                Text(tx("Uygulamanın tüm masaüstlerindeki pencereleri simgenin yanında önizlenir.", "The app's windows on every desktop are previewed next to the icon."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Toggle("Önizleme açıkken Dock gizlenmesin", isOn: $settings.keepDockOpenDuringPreview)
+                Toggle(tx("Önizleme açıkken Dock gizlenmesin", "Keep the Dock visible while a preview is open"), isOn: $settings.keepDockOpenDuringPreview)
                     .disabled(!settings.dockPreviewsEnabled)
-                Text("Dock otomatik gizliyse önizlemeye geçince de açık kalır. Bunun için macOS'un otomatik gizleme ayarı önizleme süresince kapatılıp sonra geri açılır.")
+                Text(tx("Dock otomatik gizliyse önizlemeye geçince de açık kalır. Bunun için macOS'un otomatik gizleme ayarı önizleme süresince kapatılıp sonra geri açılır.", "If the Dock hides automatically, it stays visible while you move into the preview. To do this, macOS's auto-hide setting is turned off for the preview and turned back on afterwards."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Toggle("Tam ekranda kenara değince Dock şeridini aç", isOn: $settings.fullScreenDockEnabled)
+                Toggle(tx("Tam ekranda kenara değince Dock şeridini aç", "Show a Dock strip at the screen edge in full screen"), isOn: $settings.fullScreenDockEnabled)
                     .disabled(!settings.dockPreviewsEnabled)
-                Text("macOS tam ekranda Dock'u her zaman açmıyor. Şerit, Dock'un olduğu kenarda aynı uygulamaları gösterir.")
+                Text(tx("macOS tam ekranda Dock'u her zaman açmıyor. Şerit, Dock'un olduğu kenarda aynı uygulamaları gösterir.", "macOS doesn't always show the Dock in full screen. The strip shows the same apps on the Dock's edge."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            Section("Başlangıç") {
-                Toggle("Oturum açıldığında başlat", isOn: Binding(
+            Section(tx("Başlangıç", "Startup")) {
+                Toggle(tx("Oturum açıldığında başlat", "Open at login"), isOn: Binding(
                     get: { settings.launchAtLogin },
                     set: { settings.setLaunchAtLogin($0) }
                 ))
@@ -640,7 +669,8 @@ private struct UsageTab: View {
                     Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 40, height: 40)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Berth").font(.headline)
-                        Text("Sürüm \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–") · Masaüstleri ve pencereler için sabit yerleşimli sahne")
+                        Text(tx("Sürüm \(Self.version) · Masaüstleri ve pencereler için sabit yerleşimli sahne",
+                                 "Version \(Self.version) · A fixed-layout overview of your desktops and windows"))
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -682,8 +712,8 @@ private struct LayoutsTab: View {
                 if layouts.layouts.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "square.grid.3x2").font(.system(size: 28)).foregroundStyle(.tertiary)
-                        Text("Henüz kayıtlı düzen yok").font(.headline)
-                        Text("\"Şimdiki düzeni kaydet\" pencerelerin yerini saklar; sonra buradan, menü çubuğundan ya da kendi kısayoluyla yüklersin.")
+                        Text(tx("Henüz kayıtlı düzen yok", "No saved layouts yet")).font(.headline)
+                        Text(tx("\"Şimdiki düzeni kaydet\" pencerelerin yerini saklar; sonra buradan, menü çubuğundan ya da kendi kısayoluyla yüklersin.", "\"Save current layout\" stores where your windows are; restore it here, from the menu bar or with its own shortcut."))
                             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
@@ -695,10 +725,10 @@ private struct LayoutsTab: View {
                 }
             } header: {
                 HStack(alignment: .bottom) {
-                    Text("Pencerelerin yeri, boyutu ve küçültülme durumu. Yüklerken kapalı uygulamalar açılır. Başka alandaki ve tam ekran pencereler kaydedilmez.")
+                    Text(tx("Pencerelerin yeri, boyutu ve küçültülme durumu. Yüklerken kapalı uygulamalar açılır. Başka alandaki ve tam ekran pencereler kaydedilmez.", "Each window's position, size and minimized state. Restoring launches apps that are closed. Windows on other spaces and in full screen aren't saved."))
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 16)
-                    Button("Şimdiki düzeni kaydet") { actions.saveCurrent() }
+                    Button(tx("Şimdiki düzeni kaydet", "Save current layout")) { actions.saveCurrent() }
                         .buttonStyle(.borderedProminent)
                 }
                 .textCase(nil)
@@ -724,32 +754,32 @@ private struct LayoutRow: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                TextField("Ad", text: $name)
+                TextField(tx("Ad", "Name"), text: $name)
                     .textFieldStyle(.plain)
                     .font(.body.weight(.medium))
                     .onSubmit {
                         if !layouts.rename(layout.name, to: name) {
                             name = layout.name
-                            message = "Bu ad boş ya da başka bir düzende kullanılıyor."
+                            message = tx("Bu ad boş ya da başka bir düzende kullanılıyor.", "This name is empty or used by another layout.")
                         } else {
                             message = nil
                         }
                     }
-                Text("\(layout.windows.count) pencere · \(layout.savedAt.formatted(date: .abbreviated, time: .shortened))")
+                Text(tx("\(layout.windows.count) pencere · \(layout.savedAt.formatted(date: .abbreviated, time: .shortened))", "\(layout.windows.count) windows · \(layout.savedAt.formatted(date: .abbreviated, time: .shortened))"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button(recording ? "Kısayola basın…" : (layout.hotKey?.display ?? "Kısayol ata")) { toggleRecording() }
-                .help("Esc vazgeçer, ⌫ kısayolu kaldırır.")
-            Button("Yükle") { actions.restore(layout) }
+            Button(recording ? tx("Kısayola basın…", "Press a shortcut…") : (layout.hotKey?.display ?? tx("Kısayol ata", "Set shortcut"))) { toggleRecording() }
+                .help(tx("Esc vazgeçer, ⌫ kısayolu kaldırır.", "Esc cancels, ⌫ removes the shortcut."))
+            Button(tx("Yükle", "Restore")) { actions.restore(layout) }
             Button {
                 layouts.remove(named: layout.name)
             } label: {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .help("Düzeni sil")
+            .help(tx("Düzeni sil", "Delete layout"))
         }
         .onAppear { name = layout.name }
         .onDisappear { stopRecording() }
@@ -782,7 +812,7 @@ private struct LayoutRow: View {
         let control = flags.contains(.control), option = flags.contains(.option)
         let shift = flags.contains(.shift), command = flags.contains(.command)
         guard ShortcutFormat.isAcceptable(control: control, option: option, shift: shift, command: command) else {
-            message = "Kısayolda ⌃, ⌥ ya da ⌘ tuşlarından biri olmalı."
+            message = tx("Kısayolda ⌃, ⌥ ya da ⌘ tuşlarından biri olmalı.", "A shortcut needs ⌃, ⌥ or ⌘.")
             return
         }
         var carbon = 0
@@ -800,7 +830,7 @@ private struct LayoutRow: View {
         stopRecording()
         if hotKey == layout.hotKey { return }
         guard actions.isHotKeyFree(hotKey) else {
-            message = "\(hotKey.display) başka bir yerde kullanılıyor."
+            message = tx("\(hotKey.display) başka bir yerde kullanılıyor.", "\(hotKey.display) is already in use.")
             return
         }
         layouts.setHotKey(hotKey, for: layout.name)
@@ -813,7 +843,7 @@ private struct ArrangementTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Sahnede yeri sabit olan uygulamalar; soldan sağa bu sırayla yerleşir. Boyut, hücrenin genişliğidir.")
+            Text(tx("Sahnede yeri sabit olan uygulamalar; soldan sağa bu sırayla yerleşir. Boyut, hücrenin genişliğidir.", "Apps with a fixed place in the scene, laid out left to right in this order. Size is the cell width."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -830,7 +860,7 @@ private struct ArrangementTab: View {
             .listStyle(.bordered(alternatesRowBackgrounds: true))
 
             HStack(spacing: 8) {
-                Menu("Uygulama ekle") {
+                Menu(tx("Uygulama ekle", "Add app")) {
                     ForEach(addableApps(), id: \.id) { app in
                         Button(app.name) {
                             store.update { $0.pin(app.id, windowCount: 1) }
@@ -839,7 +869,7 @@ private struct ArrangementTab: View {
                 }
                 .fixedSize()
                 Spacer()
-                Text("Sıralamak için satırı sürükleyin.")
+                Text(tx("Sıralamak için satırı sürükleyin.", "Drag a row to reorder."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -879,7 +909,7 @@ private struct PinStrip: View {
             }
             .overlay {
                 if ids.isEmpty {
-                    Text("Henüz sabit uygulama yok. Sahnede bir uygulamaya sağ tıklayıp sabitleyebilir ya da aşağıdan ekleyebilirsin.")
+                    Text(tx("Henüz sabit uygulama yok. Sahnede bir uygulamaya sağ tıklayıp sabitleyebilir ya da aşağıdan ekleyebilirsin.", "No pinned apps yet. Right-click an app in the scene to pin it, or add one below."))
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }
@@ -939,13 +969,13 @@ private struct AppRow: View {
                 .frame(width: 20, height: 20)
             Text(name).lineLimit(1)
             Spacer()
-            Picker("Boyut", selection: Binding(
+            Picker(tx("Boyut", "Size"), selection: Binding(
                 get: { store.arrangement.size(of: id) },
                 set: { size in store.update { $0.sizes[id] = size } }
             )) {
-                Text("Küçük").tag(SlotSize.small)
-                Text("Orta").tag(SlotSize.medium)
-                Text("Büyük").tag(SlotSize.large)
+                Text(tx("Küçük", "Small")).tag(SlotSize.small)
+                Text(tx("Orta", "Medium")).tag(SlotSize.medium)
+                Text(tx("Büyük", "Large")).tag(SlotSize.large)
             }
             .labelsHidden()
             .fixedSize()
@@ -955,7 +985,7 @@ private struct AppRow: View {
                 Image(systemName: "minus.circle")
             }
             .buttonStyle(.borderless)
-            .help("Sabitlemeyi kaldır")
+            .help(tx("Sabitlemeyi kaldır", "Unpin"))
         }
     }
 }
@@ -970,34 +1000,34 @@ private struct PermissionsTab: View {
         Form {
             Section {
                 if settings.windowPreviewsEnabled {
-                    row("Ekran Kaydı", detail: "Pencere önizlemeleri ve başlıkları", granted: screenRecording) {
+                    row(tx("Ekran Kaydı", "Screen Recording"), detail: tx("Pencere önizlemeleri ve başlıkları", "Window previews and titles"), granted: screenRecording) {
                         Permissions.openScreenRecordingSettings()
                     }
                 } else {
                     HStack {
                         Image(systemName: "minus.circle").foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Ekran Kaydı")
+                            Text(tx("Ekran Kaydı", "Screen Recording"))
                             Text(screenRecording
-                                 ? "Gerekmiyor, önizlemeler kapalı. Daha önce verilen izni Sistem Ayarları'ndan kaldırabilirsiniz."
-                                 : "Gerekmiyor, önizlemeler kapalı.")
+                                 ? tx("Gerekmiyor, önizlemeler kapalı. Daha önce verilen izni Sistem Ayarları'ndan kaldırabilirsiniz.", "Not needed, previews are off. You can remove access you granted earlier in System Settings.")
+                                 : tx("Gerekmiyor, önizlemeler kapalı.", "Not needed, previews are off."))
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
-                row("Erişilebilirlik", detail: "Pencereye geçme, yaslama, kapatma, Dock önizlemesi", granted: accessibility) {
+                row(tx("Erişilebilirlik", "Accessibility"), detail: tx("Pencereye geçme, yaslama, kapatma, Dock önizlemesi", "Switching, snapping and closing windows, Dock previews"), granted: accessibility) {
                     Permissions.openAccessibilitySettings()
                 }
             }
-            Section("Bu macOS sürümüyle uyumluluk") {
+            Section(tx("Bu macOS sürümüyle uyumluluk", "Compatibility with this macOS version")) {
                 ForEach(Compatibility.check()) { item in
                     HStack(alignment: .top) {
                         Image(systemName: item.works ? "checkmark.circle.fill" : "xmark.octagon.fill")
                             .foregroundStyle(item.works ? .green : .red)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.name)
-                            Text(item.works ? item.feature : "Çalışmıyor: \(item.feature)")
+                            Text(item.works ? item.feature : tx("Çalışmıyor: \(item.feature)", "Not working: \(item.feature)"))
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                     }
@@ -1021,7 +1051,7 @@ private struct PermissionsTab: View {
             }
             Spacer()
             if !granted {
-                Button("Sistem Ayarları'nı Aç", action: open)
+                Button(tx("Sistem Ayarları'nı Aç", "Open System Settings"), action: open)
             }
         }
     }

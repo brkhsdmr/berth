@@ -72,12 +72,12 @@ final class HotCornerMonitor {
               value > 1
         else { return nil }
         let names: [Int: String] = [
-            2: "Mission Control", 3: "Uygulama Pencereleri", 4: "Masaüstü", 5: "Ekran Koruyucuyu Başlat",
-            6: "Ekran Koruyucuyu Kapat", 10: "Ekranı Uyut", 11: "Launchpad", 12: "Bildirim Merkezi",
-            13: "Ekranı Kilitle", 14: "Hızlı Not",
+            2: "Mission Control", 3: tx("Uygulama Pencereleri", "Application Windows"), 4: tx("Masaüstü", "Desktop"), 5: tx("Ekran Koruyucuyu Başlat", "Start Screen Saver"),
+            6: tx("Ekran Koruyucuyu Kapat", "Disable Screen Saver"), 10: tx("Ekranı Uyut", "Put Display to Sleep"), 11: "Launchpad", 12: tx("Bildirim Merkezi", "Notification Center"),
+            13: tx("Ekranı Kilitle", "Lock Screen"), 14: tx("Hızlı Not", "Quick Note"),
         ]
-        let name = names[value] ?? "bir eylem"
+        let name = names[value] ?? tx("bir eylem", "an action")
         let modifier = CFPreferencesCopyAppValue("wvous-\(key)-modifier" as CFString, "com.apple.dock" as CFString) as? Int ?? 0
-        return modifier == 0 ? name : "\(name) (tuşla)"
+        return modifier == 0 ? name : tx("\(name) (tuşla)", "\(name) (with a key)")
     }
 }

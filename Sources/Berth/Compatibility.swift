@@ -1,4 +1,5 @@
 import AppKit
+import BerthCore
 
 /// Belgelenmemiş sistem işlevlerinin bu macOS sürümünde hâlâ çalışıp çalışmadığı.
 ///
@@ -18,10 +19,10 @@ enum Compatibility {
         let spaces = SkyLight.isAvailable && !SkyLight.displays().isEmpty
         let touches = TrackpadTouches.isAvailable
         return [
-            Item(name: "Masaüstü bilgisi (SkyLight)",
-                 feature: "Masaüstü şeridi, pencere etiketleri, alanlar arası geçiş", works: spaces),
-            Item(name: "Ham trackpad dokunmaları (MultitouchSupport)",
-                 feature: "3 / 4 parmak ayrımı; çalışmazsa hareket her parmak sayısında yakalanır", works: touches),
+            Item(name: tx("Masaüstü bilgisi (SkyLight)", "Desktop information (SkyLight)"),
+                 feature: tx("Masaüstü şeridi, pencere etiketleri, alanlar arası geçiş", "Desktop strip, window labels, switching between spaces"), works: spaces),
+            Item(name: tx("Ham trackpad dokunmaları (MultitouchSupport)", "Raw trackpad touches (MultitouchSupport)"),
+                 feature: tx("3 / 4 parmak ayrımı; çalışmazsa hareket her parmak sayısında yakalanır", "Telling 3 from 4 fingers; without it the swipe is caught with any finger count"), works: touches),
         ]
     }
 
@@ -34,6 +35,8 @@ enum Compatibility {
         let key = "compatibilityReported"
         guard UserDefaults.standard.string(forKey: key) != version else { return }
         UserDefaults.standard.set(version, forKey: key)
-        Toast.show("Bu macOS sürümünde çalışmayan özellik var: \(broken.map(\.name).joined(separator: ", ")). Ayrıntı: Ayarlar > İzinler.")
+        let names = broken.map(\.name).joined(separator: ", ")
+        Toast.show(tx("Bu macOS sürümünde çalışmayan özellik var: \(names). Ayrıntı: Ayarlar > İzinler.",
+                      "Some features don't work on this macOS version: \(names). Details: Settings > Permissions."))
     }
 }

@@ -5,7 +5,7 @@ public enum WindowNaming {
     /// Başlık yoksa pencereleri birbirinden ayıran bir ad.
     public static func display(title: String, appName: String, index: Int, windowCount: Int) -> String {
         if !title.isEmpty { return title }
-        return windowCount > 1 ? "\(appName) · Pencere \(index + 1)" : appName
+        return windowCount > 1 ? tx("\(appName) · Pencere \(index + 1)", "\(appName) · Window \(index + 1)") : appName
     }
 
     /// Erişilebilirlikten okunan pencerelerden kareyle eşleşen. Birden çok aday varsa nil:

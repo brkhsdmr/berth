@@ -195,15 +195,15 @@ enum SceneSource {
             let appID = owner.bundleIdentifier ?? "pid:\(pid)"
             let badge: String
             switch state {
-            case .hidden: badge = "Gizli"
+            case .hidden: badge = tx("Gizli", "Hidden")
             case .minimized:
                 // Bu masaüstünde ama ekranda değil: küçültülmüş olduğu doğrulanmadıysa
                 // bilmediğimizi söylemek, yanlış söylemekten iyidir.
                 let verified = verifiedMinimized || (canReadTitles && (!canVerify || isMinimized(pid: pid, title: title)))
-                badge = verified ? "Küçültülmüş" : "Görünmüyor"
-            case .fullScreen: badge = "Tam ekran"
+                badge = verified ? tx("Küçültülmüş", "Minimized") : tx("Görünmüyor", "Not visible")
+            case .fullScreen: badge = tx("Tam ekran", "Full screen")
             case .visible, .otherSpace:
-                badge = spaceID.flatMap { fullScreenIDs.contains($0) ? "Tam ekran" : labelByID[$0] } ?? ""
+                badge = spaceID.flatMap { fullScreenIDs.contains($0) ? tx("Tam ekran", "Full screen") : labelByID[$0] } ?? ""
             }
 
             windowsByApp[appID, default: []].append(SceneWindow(
@@ -222,7 +222,7 @@ enum SceneSource {
         }
 
         // Başlık okunamayınca tam ekran alanı, içindeki uygulamanın adıyla anılır.
-        for index in spaces.indices where spaces[index].isFullScreen && spaces[index].label == "Tam ekran" {
+        for index in spaces.indices where spaces[index].isFullScreen && spaces[index].label == tx("Tam ekran", "Full screen") {
             let owner = windowsByApp.first { $0.value.contains { $0.spaceID == spaces[index].id } }?.key
             let name = owner.flatMap { id in running.first { $0.bundleIdentifier == id }?.localizedName }
             if let name { spaces[index].label = cleanName(name) }
@@ -325,8 +325,8 @@ enum SceneSource {
         var result: [UInt64: String] = [:]
         for display in SkyLight.displays() where display.identifier.caseInsensitiveCompare(own) != .orderedSame {
             let name = NSScreen.screens.first { $0.displayUUID.caseInsensitiveCompare(display.identifier) == .orderedSame }?
-                .localizedName ?? "Diğer ekran"
-            let short = name.hasPrefix("Built-in") || name.hasPrefix("Yerleşik") ? "Dahili ekran" : name
+                .localizedName ?? tx("Diğer ekran", "Other display")
+            let short = name.hasPrefix("Built-in") || name.hasPrefix(tx("Yerleşik", "Built-in")) ? tx("Dahili ekran", "Built-in display") : name
             for space in display.spaces { result[space.id] = short }
         }
         return result

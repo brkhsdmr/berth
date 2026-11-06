@@ -25,7 +25,7 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 |---|---|---|
 | Version | macOS 14 or later | Windows 11 |
 | Permissions | Accessibility (switching and moving windows); Screen Recording is optional (live previews) | none |
-| Interface | Turkish (English is planned) | English and Turkish |
+| Interface | English and Turkish | English and Turkish |
 
 ## Install
 

@@ -6,11 +6,11 @@ public enum ScreenCorner: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .none: return "Yok"
-        case .topLeft: return "Sol üst"
-        case .topRight: return "Sağ üst"
-        case .bottomLeft: return "Sol alt"
-        case .bottomRight: return "Sağ alt"
+        case .none: return tx("Yok", "None")
+        case .topLeft: return tx("Sol üst", "Top left")
+        case .topRight: return tx("Sağ üst", "Top right")
+        case .bottomLeft: return tx("Sol alt", "Bottom left")
+        case .bottomRight: return tx("Sağ alt", "Bottom right")
         }
     }
 

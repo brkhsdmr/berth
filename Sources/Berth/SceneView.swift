@@ -43,10 +43,10 @@ enum TileAction: Equatable {
     var label: String {
         switch self {
         case .snap(let position): return position.label
-        case .fullScreen(let entering): return entering ? "Tam ekran yap" : "Tam ekrandan çık"
-        case .minimize: return "Dock'a küçült"
-        case .nextDisplay: return "Diğer ekrana taşı"
-        case .close: return "Pencereyi kapat"
+        case .fullScreen(let entering): return entering ? tx("Tam ekran yap", "Enter full screen") : tx("Tam ekrandan çık", "Exit full screen")
+        case .minimize: return tx("Dock'a küçült", "Minimize to Dock")
+        case .nextDisplay: return tx("Diğer ekrana taşı", "Move to next display")
+        case .close: return tx("Pencereyi kapat", "Close window")
         }
     }
 
@@ -487,22 +487,22 @@ final class SceneView: NSView {
         // Arama hep odaklı; izin eksikse boş kutu yerine izin uyarısı görünür, yazmak yine aramadır.
         let needsPermission = !content.screenRecordingGranted || !content.accessibilityGranted
         if drag != nil {
-            message = "Tam ekran yapıp buraya yerleştirmek için bırak"
+            message = tx("Tam ekran yapıp buraya yerleştirmek için bırak", "Drop to make it full screen here")
             color = .white
         } else if !query.isEmpty {
             message = query
             color = .white
         } else if searchFocused && !needsPermission {
-            message = "Uygulama ya da pencere ara"
+            message = tx("Uygulama ya da pencere ara", "Search apps and windows")
             color = NSColor(calibratedWhite: 1, alpha: 0.5)
         } else if !content.screenRecordingGranted {
-            message = "Önizlemeler ve başlıklar için Ekran Kaydı izni gerekli. Vermek için tıkla."
+            message = tx("Önizlemeler ve başlıklar için Ekran Kaydı izni gerekli. Vermek için tıkla.", "Previews and titles need Screen Recording access. Click to grant it.")
             color = .white
         } else if !content.accessibilityGranted {
-            message = "Pencereye geçmek için Erişilebilirlik izni gerekli. Vermek için tıkla."
+            message = tx("Pencereye geçmek için Erişilebilirlik izni gerekli. Vermek için tıkla.", "Switching to windows needs Accessibility access. Click to grant it.")
             color = .white
         } else {
-            message = "Aramak için yazmaya başlayın"
+            message = tx("Aramak için yazmaya başlayın", "Start typing to search")
         }
 
         let label = text(message, font: .systemFont(ofSize: 14, weight: query.isEmpty ? .regular : .medium), color: color)
@@ -575,7 +575,7 @@ final class SceneView: NSView {
         let others = content.snapshot.otherApps(pinned: content.arrangement.pinned)
         guard !others.isEmpty else { return }
 
-        let title = text("DİĞER AÇIK UYGULAMALAR", font: .systemFont(ofSize: 10.5, weight: .semibold),
+        let title = text(tx("DİĞER AÇIK UYGULAMALAR", "OTHER OPEN APPS"), font: .systemFont(ofSize: 10.5, weight: .semibold),
                          color: NSColor(calibratedWhite: 1, alpha: 0.82), kern: 0.7)
         let size = title.preferredFrameSize()
         title.frame = CGRect(x: x, y: y - size.height / 2, width: size.width, height: size.height)
@@ -700,7 +700,7 @@ final class SceneView: NSView {
         let iconSize: CGFloat = 24
         let suffix: String
         if app.windows.isEmpty {
-            suffix = app.isRunning ? " · pencere yok" : " · kapalı"
+            suffix = app.isRunning ? tx(" · pencere yok", " · no windows") : tx(" · kapalı", " · not running")
         } else {
             suffix = ""
         }
@@ -1788,21 +1788,21 @@ final class SceneView: NSView {
 
         if isPinned {
             let index = content.arrangement.pinned.firstIndex(of: id) ?? 0
-            menu.addItem(item("Sola taşı", action: #selector(moveSlotLeft(_:)), id: id, enabled: index > 0))
-            menu.addItem(item("Sağa taşı", action: #selector(moveSlotRight(_:)), id: id,
+            menu.addItem(item(tx("Sola taşı", "Move Left"), action: #selector(moveSlotLeft(_:)), id: id, enabled: index > 0))
+            menu.addItem(item(tx("Sağa taşı", "Move Right"), action: #selector(moveSlotRight(_:)), id: id,
                               enabled: index < content.arrangement.pinned.count - 1))
             menu.addItem(.separator())
 
-            let sizes: [(String, SlotSize)] = [("Küçük", .small), ("Orta", .medium), ("Büyük", .large)]
+            let sizes: [(String, SlotSize)] = [(tx("Küçük", "Small"), .small), (tx("Orta", "Medium"), .medium), (tx("Büyük", "Large"), .large)]
             for (title, size) in sizes {
                 let entry = item(title, action: #selector(changeSize(_:)), id: "\(size.rawValue)|\(id)")
                 entry.state = content.arrangement.size(of: id) == size ? .on : .off
                 menu.addItem(entry)
             }
             menu.addItem(.separator())
-            menu.addItem(item("Sabitlemeyi kaldır", action: #selector(unpin(_:)), id: id))
+            menu.addItem(item(tx("Sabitlemeyi kaldır", "Unpin"), action: #selector(unpin(_:)), id: id))
         } else {
-            menu.addItem(item("Sabitle", action: #selector(pin(_:)), id: id))
+            menu.addItem(item(tx("Sabitle", "Pin"), action: #selector(pin(_:)), id: id))
         }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }

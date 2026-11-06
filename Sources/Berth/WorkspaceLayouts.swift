@@ -82,7 +82,7 @@ extension AppController {
             if (try? await NSWorkspace.shared.openApplication(at: url, configuration: configuration)) != nil { launched += 1 }
         }
         if launched > 0 {
-            Toast.show("\(layout.name): \(launched) uygulama açılıyor…")
+            Toast.show(tx("\(layout.name): \(launched) uygulama açılıyor…", "\(layout.name): opening \(launched) apps…"))
             let wanted = Set(missing)
             for _ in 0..<16 {
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -118,25 +118,25 @@ extension AppController {
         }
         let missingWindows = layout.windows.count - moved
         Toast.show(missingWindows == 0
-            ? "\(layout.name) yüklendi."
-            : "\(layout.name) yüklendi; \(missingWindows) pencere bulunamadı ya da taşınamadı.")
+            ? tx("\(layout.name) yüklendi.", "\(layout.name) restored.")
+            : tx("\(layout.name) yüklendi; \(missingWindows) pencere bulunamadı ya da taşınamadı.", "\(layout.name) restored; \(missingWindows) windows couldn't be found or moved."))
     }
 
     func saveCurrentLayout(store: WorkspaceLayoutStore, name: String? = nil) {
         let layout = captureLayout(named: name ?? LayoutMatcher.nextName(existing: store.layouts.map(\.name)))
         store.save(layout)
-        Toast.show("\(layout.name) kaydedildi: \(layout.windows.count) pencere.")
+        Toast.show(tx("\(layout.name) kaydedildi: \(layout.windows.count) pencere.", "\(layout.name) saved: \(layout.windows.count) windows."))
     }
 
     func askAndSaveLayout(store: WorkspaceLayoutStore) {
         let alert = NSAlert()
-        alert.messageText = "Çalışma düzenini kaydet"
-        alert.informativeText = "Bu alanlardaki pencerelerin yeri ve boyutu kaydedilir. Aynı adla kayıt eskisinin yerini alır."
+        alert.messageText = tx("Çalışma düzenini kaydet", "Save Workspace Layout")
+        alert.informativeText = tx("Bu alanlardaki pencerelerin yeri ve boyutu kaydedilir. Aynı adla kayıt eskisinin yerini alır.", "Saves the position and size of windows in these spaces. Saving with the same name replaces the old one.")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = LayoutMatcher.nextName(existing: store.layouts.map(\.name))
         alert.accessoryView = field
-        alert.addButton(withTitle: "Kaydet")
-        alert.addButton(withTitle: "Vazgeç")
+        alert.addButton(withTitle: tx("Kaydet", "Save"))
+        alert.addButton(withTitle: tx("Vazgeç", "Cancel"))
         NSApp.activate(ignoringOtherApps: true)
         alert.window.initialFirstResponder = field
         guard alert.runModal() == .alertFirstButtonReturn else { return }

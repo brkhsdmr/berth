@@ -213,9 +213,9 @@ enum DockAppAction: Equatable {
 
     var label: String {
         switch self {
-        case .hide: return "Gizle"
-        case .show: return "Göster"
-        case .quit: return "Çık"
+        case .hide: return tx("Gizle", "Hide")
+        case .show: return tx("Göster", "Show")
+        case .quit: return tx("Çık", "Quit")
         }
     }
 
@@ -613,7 +613,7 @@ final class DockPreviewView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         buildHeader(app, width: width, hidden: 0)
-        let note = label("Açık pencere yok", font: .systemFont(ofSize: 11.5), color: NSColor(calibratedWhite: 1, alpha: 0.62))
+        let note = label(tx("Açık pencere yok", "No open windows"), font: .systemFont(ofSize: 11.5), color: NSColor(calibratedWhite: 1, alpha: 0.62))
         note.frame = CGRect(x: Self.padding + 2, y: Self.header, width: width - 2 * Self.padding - 4, height: 16)
         layer?.addSublayer(note)
         CATransaction.commit()
@@ -768,7 +768,7 @@ final class DockPreviewView: NSView {
         close.isHidden = true
         let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .bold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
-        if let symbol = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Pencereyi kapat")?.withSymbolConfiguration(configuration) {
+        if let symbol = NSImage(systemSymbolName: "xmark", accessibilityDescription: tx("Pencereyi kapat", "Close window"))?.withSymbolConfiguration(configuration) {
             let glyph = CALayer()
             glyph.frame = close.bounds.insetBy(dx: 6, dy: 6)
             var rect = CGRect(x: 0, y: 0, width: symbol.size.width * scale, height: symbol.size.height * scale)
