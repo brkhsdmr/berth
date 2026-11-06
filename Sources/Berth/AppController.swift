@@ -204,6 +204,21 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.showSettings() }
         }
+        // Dock önizlemesini açar (ekran görüntüsü için); nesne uygulama kimliği, boşsa kapatır.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("io.github.brkhsdmr.berth.dockPreview"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let id = note.object as? String ?? ""
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if id.isEmpty { self.dockPreview.holdOpen = false; self.dockPreview.hide(); return }
+                guard let item = self.dockWatcher.item(bundleID: id) else { DockTrace.log("dock testi: \(id) yok"); return }
+                self.dockPreview.holdOpen = true
+                self.dockPreview.dockItemChanged(item)
+            }
+        }
         // Sahneyi açıp aramaya yazar (ekran görüntüsü için); nesne aranan söz, boşsa kapatır.
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("io.github.brkhsdmr.berth.searchPreview"),

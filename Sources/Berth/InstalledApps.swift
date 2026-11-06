@@ -49,6 +49,26 @@ final class InstalledApps: @unchecked Sendable {
         return ranked.prefix(limit).map { $0.app }
     }
 
+    private static var nameCache: [String: String] = [:]
+    private static let nameLock = NSLock()
+
+    /// Uygulamanın Berth'in dilindeki adı (sahne, arama). Çeviri tablosu yoksa İngilizcede temel ad,
+    /// Türkçede `fallback` (çalışan uygulamanın kendi adı ya da Finder'ın adı).
+    static func name(bundleURL: URL?, fallback: String) -> String {
+        guard let url = bundleURL else { return fallback }
+        nameLock.lock()
+        if let cached = nameCache[url.path] { nameLock.unlock(); return cached }
+        nameLock.unlock()
+        let bundle = Bundle(url: url)
+        let base = (bundle?.infoDictionary?["CFBundleDisplayName"] as? String) ?? (bundle?.infoDictionary?["CFBundleName"] as? String)
+        var name = bundle.flatMap(localizedName) ?? (L10n.english ? base : nil) ?? fallback
+        if name.hasSuffix(".app") { name = String(name.dropLast(4)) }
+        nameLock.lock()
+        nameCache[url.path] = name
+        nameLock.unlock()
+        return name
+    }
+
     /// Uygulamanın adı Berth'in dilinde: önce InfoPlist.loctable (macOS'un kendi uygulamaları),
     /// sonra dil klasöründeki InfoPlist.strings. Çeviri yoksa nil.
     private static func localizedName(_ bundle: Bundle) -> String? {
@@ -83,12 +103,8 @@ final class InstalledApps: @unchecked Sendable {
             guard seen.insert(id ?? url.path).inserted else { return }
             // Ad uygulamanın kendi çeviri tablosundan, Berth'in diliyle: Finder'ın adı sistem
             // dilinde kalıyor, Berth'in dili farklıysa ızgarada iki dil karışıyordu.
-            let base = (bundle?.infoDictionary?["CFBundleDisplayName"] as? String) ?? (bundle?.infoDictionary?["CFBundleName"] as? String)
             // İngilizce çoğu zaman tabloda değil, uygulamanın temel adıdır (Calculator).
-            var name = bundle.flatMap(Self.localizedName)
-                ?? (L10n.english ? base : nil)
-                ?? manager.displayName(atPath: url.path)
-            if name.hasSuffix(".app") { name = String(name.dropLast(4)) }
+            let name = Self.name(bundleURL: url, fallback: manager.displayName(atPath: url.path))
             result.append(App(name: name, url: url, bundleID: id))
         }
         var folders = roots

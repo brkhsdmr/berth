@@ -81,6 +81,29 @@ struct SceneSnapshot {
 /// demoApps -array com.apple.Safari …` verilince sahne yalnızca bu uygulamaları gösterir; diğer
 /// pencereler ve yalnızca onların bulunduğu tam ekran alanlar görünmez. Silince mod kapanır.
 enum DemoMode {
+    /// `defaults write io.github.brkhsdmr.berth mosaicPreviews -bool YES`: pencere önizlemeleri
+    /// pikselleşir, tam ekran alanlar pencere başlığı yerine uygulama adıyla anılır. Gerçek
+    /// kullanımın ekran görüntüsü, içerik okunmadan.
+    static var mosaic: Bool { UserDefaults.standard.bool(forKey: "mosaicPreviews") }
+
+    /// Görüntüyü iri pikselli bir mozaiğe çevirir: önce küçültülür, sonra yumuşatmadan büyütülür.
+    static func mosaic(_ image: CGImage) -> CGImage {
+        let blocks = 26.0
+        let small = CGSize(width: blocks, height: max(1, (blocks * Double(image.height) / Double(max(image.width, 1))).rounded()))
+        let space = CGColorSpaceCreateDeviceRGB()
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let tiny = CGContext(data: nil, width: Int(small.width), height: Int(small.height), bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else { return image }
+        tiny.interpolationQuality = .medium
+        tiny.draw(image, in: CGRect(origin: .zero, size: small))
+        guard let reduced = tiny.makeImage() else { return image }
+        let scale = 24.0
+        let big = CGSize(width: small.width * scale, height: small.height * scale)
+        guard let large = CGContext(data: nil, width: Int(big.width), height: Int(big.height), bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else { return image }
+        large.interpolationQuality = .none
+        large.draw(reduced, in: CGRect(origin: .zero, size: big))
+        return large.makeImage() ?? image
+    }
+
     static var apps: [String]? {
         guard let list = UserDefaults.standard.stringArray(forKey: "demoApps"), !list.isEmpty else { return nil }
         return list
@@ -89,9 +112,20 @@ enum DemoMode {
 
 extension SceneSnapshot {
     func demoFiltered() -> SceneSnapshot {
-        guard let demo = DemoMode.apps else { return self }
-        let keep = Set(demo)
         var copy = self
+        if DemoMode.mosaic {
+            // Başlıklar da gizlenir: kartlarda "Uygulama · Pencere N" görünür.
+            for key in copy.apps.keys {
+                for index in copy.apps[key]!.windows.indices { copy.apps[key]!.windows[index].title = "" }
+            }
+            // Tam ekran alanın adı pencere başlığıdır (bilgisayar adı, belge adı): uygulama adı olsun.
+            for index in copy.spaces.indices where copy.spaces[index].isFullScreen {
+                let id = copy.spaces[index].id
+                if let app = apps.values.first(where: { $0.windows.contains { $0.spaceID == id } }) { copy.spaces[index].label = app.name }
+            }
+        }
+        guard let demo = DemoMode.apps else { return copy }
+        let keep = Set(demo)
         copy.apps = apps.filter { keep.contains($0.key) }
         copy.spaces = spaces.filter { space in
             !space.isFullScreen || copy.apps.values.contains { $0.windows.contains { $0.spaceID == space.id } }
@@ -249,7 +283,8 @@ enum SceneSource {
         // Başlık okunamayınca tam ekran alanı, içindeki uygulamanın adıyla anılır.
         for index in spaces.indices where spaces[index].isFullScreen && spaces[index].label == tx("Tam ekran", "Full screen") {
             let owner = windowsByApp.first { $0.value.contains { $0.spaceID == spaces[index].id } }?.key
-            let name = owner.flatMap { id in running.first { $0.bundleIdentifier == id }?.localizedName }
+            let name = owner.flatMap { id in running.first { $0.bundleIdentifier == id } }
+                .map { InstalledApps.name(bundleURL: $0.bundleURL, fallback: $0.localizedName ?? "") }
             if let name { spaces[index].label = cleanName(name) }
         }
         _ = labelByID
@@ -260,7 +295,7 @@ enum SceneSource {
             let windows = (windowsByApp[id] ?? []).sorted { $0.id < $1.id }
             apps[id] = SceneApp(
                 id: id,
-                name: cleanName(app.localizedName ?? id),
+                name: cleanName(InstalledApps.name(bundleURL: app.bundleURL, fallback: app.localizedName ?? id)),
                 icon: app.icon ?? NSWorkspace.shared.icon(for: .application),
                 isRunning: true,
                 pid: app.processIdentifier,
@@ -275,7 +310,7 @@ enum SceneSource {
             let display = FileManager.default.displayName(atPath: url.path)
             apps[id] = SceneApp(
                 id: id,
-                name: cleanName(display.hasSuffix(".app") ? String(display.dropLast(4)) : display),
+                name: cleanName(InstalledApps.name(bundleURL: url, fallback: display.hasSuffix(".app") ? String(display.dropLast(4)) : display)),
                 icon: NSWorkspace.shared.icon(forFile: url.path),
                 isRunning: false,
                 pid: nil,
@@ -353,9 +388,11 @@ enum SceneSource {
         let own = screen.displayUUID
         var result: [UInt64: String] = [:]
         for display in SkyLight.displays() where display.identifier.caseInsensitiveCompare(own) != .orderedSame {
-            let name = NSScreen.screens.first { $0.displayUUID.caseInsensitiveCompare(display.identifier) == .orderedSame }?
-                .localizedName ?? tx("Diğer ekran", "Other display")
-            let short = name.hasPrefix("Built-in") || name.hasPrefix(tx("Yerleşik", "Built-in")) ? tx("Dahili ekran", "Built-in display") : name
+            let match = NSScreen.screens.first { $0.displayUUID.caseInsensitiveCompare(display.identifier) == .orderedSame }
+            // Dahili ekran adından değil donanımdan tanınır: ad sistem dilinde gelir, Berth'inkinde değil.
+            let short = match.map { CGDisplayIsBuiltin($0.displayID) != 0 } == true
+                ? tx("Dahili ekran", "Built-in display")
+                : match?.localizedName ?? tx("Diğer ekran", "Other display")
             for space in display.spaces { result[space.id] = short }
         }
         return result

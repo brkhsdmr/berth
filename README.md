@@ -6,7 +6,7 @@ Mission Control and Task View rearrange everything each time you open them. Bert
 
 Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
-![Berth on macOS: pinned apps with live previews, the desktop strip at the top](docs/images/scene.jpg)
+![Berth on macOS: every app in its own place with live previews, the desktop strip at the top (window contents pixelated for this screenshot)](docs/images/scene.jpg)
 
 ## Features
 
@@ -22,9 +22,20 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 - **Private by design.** No account, no analytics, no network unless you turn on the Mac–Windows bridge. See [privacy](store/privacy.md).
 
 <table><tr>
-<td width="62%"><img src="docs/images/search.jpg" alt="Typing in the search box filters windows and shows matching apps, including ones that aren't running"></td>
-<td><img src="docs/images/settings.png" alt="The settings window: keyboard shortcut, trackpad gesture and a hot corner picker"></td>
+<td width="62%"><img src="docs/images/search.jpg" alt="Typing filters windows and shows matching apps in an icon grid, including apps that are not running"></td>
+<td><img src="docs/images/dock-preview.png" alt="Hovering a Dock icon shows that app's windows on every desktop"></td>
 </tr></table>
+
+<details>
+<summary>More screenshots: settings</summary>
+
+| | |
+|---|---|
+| ![Opening: shortcut, trackpad gesture, hot corner](docs/images/settings-opening.png) | ![Pinned apps](docs/images/settings-pinned.png) |
+| ![Workspace layouts](docs/images/settings-layouts.png) | ![Windows connection](docs/images/settings-windows.png) |
+| ![General](docs/images/settings-general.png) | ![Permissions](docs/images/settings-permissions.png) |
+
+</details>
 
 ## Requirements
 

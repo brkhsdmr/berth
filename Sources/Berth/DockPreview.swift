@@ -142,6 +142,20 @@ final class DockWatcher {
         return entries
     }
 
+    #if DEBUG
+    /// Ekran görüntüsü için: verilen uygulamanın Dock simgesi, imleç üstünde değilken.
+    func item(bundleID: String) -> Item? {
+        guard let list, let items = Self.attribute(list, kAXChildrenAttribute) as? [AXUIElement] else { return nil }
+        for element in items {
+            guard let url = Self.attribute(element, kAXURLAttribute) as? URL, Bundle(url: url)?.bundleIdentifier == bundleID,
+                  let title = Self.attribute(element, kAXTitleAttribute) as? String, let frame = Self.frame(element)
+            else { continue }
+            return Item(title: title, bundleID: bundleID, frame: frame, isFixedFrame: true)
+        }
+        return nil
+    }
+    #endif
+
     /// Seçili simgenin şu anki karesi. Tam ekranda Dock kayarak açıldığı için bildirim
     /// anındaki kare ekranın dışında kalmış olabilir.
     func liveItemFrame() -> CGRect? {
@@ -467,7 +481,15 @@ final class DockPreviewController {
         }
     }
 
+    #if DEBUG
+    /// Ekran görüntüsü için: imleç uzaktayken de açık kalsın.
+    var holdOpen = false
+    #endif
+
     private func checkLeave() {
+        #if DEBUG
+        if holdOpen { return }
+        #endif
         let mouse = NSEvent.mouseLocation
         let inPanel = panel.frame.insetBy(dx: -6, dy: -6).contains(mouse)
         // Dock seçimi imleç panele geçince temizlenmeyebiliyor; asıl ölçü imlecin yeri.

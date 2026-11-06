@@ -929,7 +929,7 @@ private struct PinStrip: View {
     private func cell(_ id: String, showsName: Bool) -> some View {
         let on = selection == id
         let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
-        let name = url.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") } ?? id
+        let name = url.map { InstalledApps.name(bundleURL: $0, fallback: FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "")) } ?? id
         return Button {
             selection = id
         } label: {
@@ -960,7 +960,7 @@ private struct AppRow: View {
     private var name: String {
         guard let url else { return id }
         let display = FileManager.default.displayName(atPath: url.path)
-        return display.hasSuffix(".app") ? String(display.dropLast(4)) : display
+        return InstalledApps.name(bundleURL: url, fallback: display.hasSuffix(".app") ? String(display.dropLast(4)) : display)
     }
 
     var body: some View {

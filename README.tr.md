@@ -6,7 +6,7 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 Ücretsiz ve açık kaynak (GPL-3.0). [English](README.md)
 
-![macOS'ta Berth: canlı önizlemeli sabit uygulamalar, üstte masaüstü şeridi](docs/images/scene.jpg)
+![macOS'ta Berth: her uygulama kendi yerinde, canlı önizlemeler, üstte masaüstü şeridi (pencere içerikleri bu görüntü için pikselleştirildi)](docs/images/scene.jpg)
 
 ## Özellikler
 
@@ -22,9 +22,20 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 - **Gizlilik.** Hesap yok, analiz yok. Mac–Windows köprüsünü açmadıkça ağ bağlantısı da yok. Bkz. [gizlilik](store/privacy.md).
 
 <table><tr>
-<td width="62%"><img src="docs/images/search.jpg" alt="Arama kutusuna yazınca pencereler süzülür, açık olmayanlar dahil uygulamalar görünür"></td>
-<td><img src="docs/images/settings.png" alt="Ayarlar penceresi: klavye kısayolu, trackpad hareketi ve sıcak köşe seçici"></td>
+<td width="62%"><img src="docs/images/search.jpg" alt="Yazınca pencereler süzülür, adı uyan uygulamalar açık olmayanlar dahil simge ızgarasında görünür"></td>
+<td><img src="docs/images/dock-preview.png" alt="Dock simgesinin üstüne gelince uygulamanın tüm masaüstlerindeki pencereleri"></td>
 </tr></table>
+
+<details>
+<summary>Daha fazla görüntü: ayarlar</summary>
+
+| | |
+|---|---|
+| ![Açılış: kısayol, trackpad hareketi, sıcak köşe](docs/images/settings-opening.png) | ![Sabit uygulamalar](docs/images/settings-pinned.png) |
+| ![Çalışma düzenleri](docs/images/settings-layouts.png) | ![Windows bağlantısı](docs/images/settings-windows.png) |
+| ![Genel](docs/images/settings-general.png) | ![İzinler](docs/images/settings-permissions.png) |
+
+</details>
 
 ## Gereksinimler
 
