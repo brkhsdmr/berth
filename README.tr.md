@@ -8,6 +8,8 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 ![macOS'ta Berth: her uygulama kendi yerinde, canlı önizlemeler, üstte masaüstü şeridi (pencere içerikleri bu görüntü için yer tutucuyla değiştirildi)](docs/images/scene.jpg)
 
+**[▶ Tanıtım videosunu izle](docs/videos/Berth-demo.mp4)** (2:42, macOS ve Windows; pencere içerikleri yer tutucuyla değiştirildi)
+
 ## Özellikler
 
 - **Sabit yerler.** Uygulamaları hücrelere sabitlersin (küçük, orta, büyük); yerleşim her açılışta aynıdır. Sabitlenmemiş uygulamalar altta bir sırada durur. Sabit uygulamaları sahnede hücreyi sürükleyerek sıralarsın; bir ayarı açarsan aşağı kaydırınca diğer uygulamaların pencereleri de listelenir.

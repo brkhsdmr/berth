@@ -8,6 +8,8 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
 ![Berth on macOS: every app in its own place with live previews, the desktop strip at the top (window contents replaced with placeholders for this screenshot)](docs/images/scene.jpg)
 
+**[▶ Watch the demo](docs/videos/Berth-demo.mp4)** (2:42, macOS and Windows; window contents replaced with placeholders)
+
 ## Features
 
 - **Fixed places.** Pin apps to cells (small, medium or large); the layout stays the same every time. Apps you haven't pinned sit in a row at the bottom. Drag a cell in the scene to reorder your pinned apps, and turn on a setting to scroll down to the windows of the other apps.
