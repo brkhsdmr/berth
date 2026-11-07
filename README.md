@@ -26,6 +26,18 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 <td><img src="docs/images/dock-preview.png" alt="Hovering a Dock icon shows that app's windows on every desktop"></td>
 </tr></table>
 
+### Dock previews
+
+Hover a Dock icon to see that app's windows on every desktop and full-screen space; click one to go there. It works in full-screen apps too: push the pointer to the screen edge, the Dock slides in, and the previews come with it.
+
+<table><tr>
+<td><img src="docs/images/dock-desktop.png" alt="Hovering Chrome in the Dock shows its windows on the desktop and in a full-screen space"></td>
+<td><img src="docs/images/dock-fullscreen.png" alt="Inside a full-screen app, the Dock slides in from the edge and the preview still appears"></td>
+</tr><tr>
+<td align="center">On the desktop</td>
+<td align="center">Inside a full-screen app</td>
+</tr></table>
+
 <details>
 <summary>More screenshots: settings</summary>
 

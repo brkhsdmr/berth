@@ -26,6 +26,18 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 <td><img src="docs/images/dock-preview.png" alt="Dock simgesinin üstüne gelince uygulamanın tüm masaüstlerindeki pencereleri"></td>
 </tr></table>
 
+### Dock önizlemeleri
+
+Dock'taki bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki ve tam ekran alanlarındaki pencereleri görünür; birine tıklayınca oraya geçersin. Tam ekran uygulamalarda da çalışır: imleci ekran kenarına götürünce Dock kayarak gelir, önizlemeler de onunla birlikte.
+
+<table><tr>
+<td><img src="docs/images/dock-desktop.png" alt="Dock'ta Chrome'un üstüne gelince masaüstündeki ve tam ekrandaki pencereleri"></td>
+<td><img src="docs/images/dock-fullscreen.png" alt="Tam ekran bir uygulamada Dock kenardan gelir, önizleme yine açılır"></td>
+</tr><tr>
+<td align="center">Masaüstünde</td>
+<td align="center">Tam ekran bir uygulamada</td>
+</tr></table>
+
 <details>
 <summary>Daha fazla görüntü: ayarlar</summary>
 
