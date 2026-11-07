@@ -10,7 +10,7 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 ## Özellikler
 
-- **Sabit yerler.** Uygulamaları hücrelere sabitlersin (küçük, orta, büyük); yerleşim her açılışta aynıdır. Sabitlenmemiş uygulamalar altta bir sırada durur. macOS'ta sabit uygulamaları sahnede hücreyi sürükleyerek sıralarsın; bir ayarı açarsan aşağı kaydırınca diğer uygulamaların pencereleri de listelenir.
+- **Sabit yerler.** Uygulamaları hücrelere sabitlersin (küçük, orta, büyük); yerleşim her açılışta aynıdır. Sabitlenmemiş uygulamalar altta bir sırada durur. Sabit uygulamaları sahnede hücreyi sürükleyerek sıralarsın; bir ayarı açarsan aşağı kaydırınca diğer uygulamaların pencereleri de listelenir.
 - **Tüm masaüstleri bir arada.** Her sanal masaüstündeki ve tam ekrandaki pencereler, üstte masaüstü şeridiyle.
 - **Arama.** Yazmaya başlayınca pencereler süzülür. Adı uyan uygulamalar, açık olmayanlar da dahil, arama kutusunun altında simge ızgarası olarak çıkar. Enter en iyi eşleşmeyi açar.
 - **Klavye.** Oklar önizlemeler arasında gezer, Enter geçer, ⌘1…9 / Ctrl+1…9 o masaüstüne gider.

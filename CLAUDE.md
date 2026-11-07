@@ -49,6 +49,8 @@ Yalnızca debug derlemesinde. macOS'ta `DistributedNotificationCenter` bildiriml
 
 Ekran görüntüsü modu (debug): `defaults write io.github.brkhsdmr.berth mosaicPreviews -bool YES` önizlemeleri pikselleştirir ve pencere başlıklarını gizler; `demoApps` sahneyi verilen uygulamalarla sınırlar. Bitince `defaults delete … mosaicPreviews` ve release derlemesini yeniden kur.
 
+Windows'ta debug derlemede `%APPDATA%\Berth\mosaic.on` dosyası varsa sahne önizlemeleri pikselleşir, başlık yerine uygulama adı görünür (`windows/src/app/demo.h`). Görev çubuğu önizlemesi bu moda dahil değil.
+
 Günlük: `~/Library/Logs/Berth/dock.log`. Windows'ta `%APPDATA%\Berth\trace.on` dosyası varsa sahne yerleşimi `layout.txt`'ye yazılır (T: önizleme, D: masaüstü, N: yeni masaüstü, H: arama kutusu, A: köşe düğmeleri).
 
 ## Ekran görüntüleri (docs/images)

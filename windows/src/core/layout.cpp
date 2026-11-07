@@ -104,6 +104,51 @@ std::vector<PlacedSlot> placeSlots(const std::vector<SlotSpec>& slots, const Rec
     return placed;
 }
 
+std::vector<PlacedSlot> placeSlotsFlowing(const std::vector<SlotSpec>& slots, double x, double width, double top,
+                                          double viewportHeight, const StageMetrics& metrics) {
+    constexpr int slotsPerPage = 12;
+    int pages = std::max(1, (static_cast<int>(slots.size()) + slotsPerPage - 1) / slotsPerPage);
+    StageMetrics flowing = metrics;
+    flowing.maxRows = metrics.maxRows * pages;
+    auto placed = placeSlots(slots, {x, top, width, viewportHeight * pages}, flowing);
+    if (placed.empty()) return placed;
+    double shift = top - placed.front().frame.y;
+    for (auto& slot : placed) {
+        slot.frame.y += shift;
+        slot.pile.y += shift;
+    }
+    return placed;
+}
+
+std::optional<SlotDrop> slotDropAt(double x, double y, size_t moving, const std::vector<PlacedSlot>& slots, double gap) {
+    if (moving >= slots.size()) return std::nullopt;
+    size_t bestStart = 0, bestEnd = 0;
+    double bestDistance = 1e18;
+    for (size_t start = 0; start < slots.size();) {
+        size_t end = start + 1;
+        while (end < slots.size() && slots[end].frame.y == slots[start].frame.y) ++end;
+        const Rect& frame = slots[start].frame;
+        double distance = std::max({frame.y - y, y - frame.bottom(), 0.0});
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestStart = start;
+            bestEnd = end;
+        }
+        start = end;
+    }
+    size_t target = bestEnd;
+    for (size_t i = bestStart; i < bestEnd; ++i) {
+        if (x < slots[i].frame.midX()) {
+            target = i;
+            break;
+        }
+    }
+    if (target == moving || target == moving + 1) return std::nullopt;
+    double markX = target < bestEnd ? slots[target].frame.x - gap / 2 : slots[bestEnd - 1].frame.right() + gap / 2;
+    const Rect& row = slots[bestStart].frame;
+    return SlotDrop{target, markX, row.y, row.bottom()};
+}
+
 std::vector<Rect> pileFrames(const Rect& rect, const std::vector<double>& input, double overlap) {
     int count = static_cast<int>(input.size());
     if (count == 0 || rect.w <= 0 || rect.h <= 0) return {};

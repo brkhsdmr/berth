@@ -30,6 +30,15 @@ Sahnede: önizleme köşesinde sola/sağa yaslama, ekranı kapla, görev çubuğ
 - `windows/src/app/source`: pencere ve masaüstü listesi.
 - `windows/src/app/main`: arka pencere zemini çizer ve önizlemeleri taşır, ön pencere önizlemelerin üstündeki öğeleri çizer ve fareyi alır.
 
+## Sahnede kaydırma ve sıralama
+
+Davranış Mac'teki gibidir (docs/mac-notes.md). Windows'a özgü olanlar:
+
+- **Kırpma kaynaktan yapılır.** DWM önizlemesi pencerenin üstünde çizilir, Direct2D kırpması ona etki etmez. Yarım görünen önizlemenin kaynak dikdörtgeni kesilir, tamamen görünmeyen gizlenir (`placeThumbnail`).
+- **Yerler iki uzayda.** `Tile.page` ve `Hit.page` sayfa uzayında, `target` ve `rect` görünen yerdir; `applyScroll` ikisini eşitler. Mevcut fare kodu görünen yerle çalışmaya devam eder.
+- **Akıcılık.** Tekerlek hedefi değiştirir, 15 ms'lik zamanlayıcı yumuşatır. Bulanık duvar kağıdı bir kez çizilip saklanır, yoksa her karede yeniden hesaplanırdı.
+- **Sürükleme.** Önizleme şeritte bir masaüstüne bırakılırsa pencere taşınır, hücrelerin arasına bırakılırsa sıra değişir. Etiket ve boş hücre yalnızca sıralar.
+
 ## Windows 11 25H2 (26200) üzerinde ölçülenler
 
 - DWM önizlemesi başka masaüstündeki ve küçültülmüş pencerelerde de görüntü veriyor, izin istemiyor.

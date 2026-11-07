@@ -10,7 +10,7 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
 ## Features
 
-- **Fixed places.** Pin apps to cells (small, medium or large); the layout stays the same every time. Apps you haven't pinned sit in a row at the bottom. On macOS, drag a cell in the scene to reorder your pinned apps, and turn on a setting to scroll down to the windows of the other apps.
+- **Fixed places.** Pin apps to cells (small, medium or large); the layout stays the same every time. Apps you haven't pinned sit in a row at the bottom. Drag a cell in the scene to reorder your pinned apps, and turn on a setting to scroll down to the windows of the other apps.
 - **All desktops at once.** Windows from every virtual desktop and full-screen space, with a strip of desktops at the top.
 - **Search.** Start typing to filter windows; matching apps appear in an icon grid under the search box, including apps that aren't running. Enter opens the best match.
 - **Keyboard.** Arrow keys move between previews, Enter switches, ⌘1…9 / Ctrl+1…9 jumps to a desktop.

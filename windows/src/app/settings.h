@@ -14,6 +14,8 @@ struct Settings {
     HotCorner corner = HotCorner::None;
     int cornerDelayMs = 0;
     bool taskbarPreview = true;
+    /// Sahnede aşağı kaydırınca sabit olmayan uygulamaların pencereleri kendi hücrelerinde görünür.
+    bool otherAppsScroll = false;
     /// Mac'teki uygulamanın adı (Tailscale ya da yerel ağ) ve eşleştirme kodu; boşsa bağlanılmaz.
     std::wstring remoteHost, remoteToken;
     /// Arayüz dili; text::Language. Yeniden başlatınca geçerli olur.

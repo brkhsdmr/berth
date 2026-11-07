@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 #include "../core/layout.h"
+#include "demo.h"
 #include "icon.h"
 #include "layouts.h"
 #include "remote.h"
@@ -65,6 +66,7 @@ constexpr UINT_PTR kCloseTimer = 2;
 constexpr UINT_PTR kTaskbarTimer = 3;
 constexpr UINT_PTR kMinimizeTimer = 4;
 constexpr UINT_PTR kLayoutRetryTimer = 5;
+constexpr UINT_PTR kScrollTimer = 6;
 /// Çalışma düzeni kısayolları bu kimlikten başlar.
 constexpr int kLayoutHotKeyBase = 100;
 constexpr int kActionCount = 5; // Sola, sağa, ekranı kapla, küçült, kapat.
@@ -134,20 +136,24 @@ void savePins(const std::vector<Pin>& pins) {
 // MARK: Uygulama
 
 enum class HitKind { Window, Space, NewDesktop, EmptySlot, Chip, Hint, Launch };
-enum class DragKind { None, Tile, Space };
+enum class DragKind { None, Tile, Space, Slot };
 
 struct Hit {
     Rect rect;
     HitKind kind;
     size_t index = 0;   // Pencere, masaüstü ya da uygulama sırası.
+    bool scrolls = false;   // Sayfayla kayar: `rect`, `page`ten türer.
+    Rect page;          // Sayfa uzayındaki yer.
 };
 
 struct Tile {
     SceneWindow window;
-    Rect target;
+    Rect page;      // Sayfa uzayındaki yer.
+    Rect target;    // Görünen yer: `page`, kaydırma kadar yukarıda.
     Rect start;
     bool flies = false;
     HTHUMBNAIL thumb = nullptr;
+    SIZE source{};
 };
 
 class App {
@@ -174,7 +180,17 @@ private:
     void registerThumbnails();
     void clearStripThumbnails();
     std::vector<HTHUMBNAIL> stripThumbs_;
-    void placeThumbnail(Tile& tile, const Rect& rect, BYTE opacity);
+    void placeThumbnail(Tile& tile, const Rect& rect, BYTE opacity, bool clip = true);
+    Rect clipRect() const;
+    Rect shifted(Rect rect) const { rect.y -= scrollOffset_; return rect; }
+    void applyScroll();
+    void scrollChanged();
+    void scrollTo(double value);
+    void stepScroll();
+    void scrollIntoView(const Tile& tile);
+    int pinAt(int x, int y) const;
+    bool onHoveredTile(int x, int y) const;
+    void reorderPin(size_t pin, size_t gap);
     void stepAnimation();
     void renderBack();
     void renderFront();
@@ -216,8 +232,15 @@ private:
     std::vector<std::pair<Rect, DesktopInfo>> strip_;
     std::vector<std::string> otherApps_;
     std::map<std::string, PlacedSlot> placed_;
+    std::vector<PlacedSlot> pinnedSlots_;
+    Rect pinnedArea_;
     int hover_ = -1;
     int hoverAction_ = -1;
+
+    // Kaydırma
+    double scrollOffset_ = 0, scrollTarget_ = 0, maxScroll_ = 0;
+    /// Sayfanın göründüğü alan; kaydırılacak bir şey yoksa tüm sahne.
+    Rect viewport_;
 
     // Sürükleme
     DragKind drag_ = DragKind::None;
@@ -226,6 +249,9 @@ private:
     int dragX_ = 0, dragY_ = 0;
     int dropDesktop_ = -1;   // Şeritteki hedef masaüstü.
     int dropGap_ = -1;       // Masaüstü sürüklenirken aralık.
+    int pressPin_ = -1;      // Basılan sabit hücre.
+    int dragPin_ = -1;       // Sürüklenen sabit hücre; bırakılan yer sırayı değiştirebilir.
+    std::optional<SlotDrop> slotDrop_;
     bool dropNew_ = false;   // "+" üzerine bırakma.
     size_t dragTile_ = 0, dragSpace_ = 0;
     Rect newDesktopRect_;
@@ -269,6 +295,12 @@ private:
     ComPtr<IWICFormatConverter> wallpaperSource_;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> backIcons_;
     ComPtr<ID2D1Bitmap> wallpaperBitmap_;
+    /// Bulanıklaştırma her karede yapılmaz: kaydırma akıcı kalır.
+    ComPtr<ID2D1Bitmap> blurredBackdrop_;
+#ifdef DEBUG
+    std::map<HWND, ComPtr<ID2D1Bitmap>> mosaics_;
+    ID2D1Bitmap* mosaicFor(ID2D1RenderTarget* rt, HWND hwnd);
+#endif
     NOTIFYICONDATAW tray_{};
     TaskbarPreview preview_;
 
@@ -620,6 +652,7 @@ void App::open() {
     backTarget_.Reset();
     backIcons_.clear();
     wallpaperBitmap_.Reset();
+    blurredBackdrop_.Reset();
     d2d_->CreateHwndRenderTarget(
         D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96),
         D2D1::HwndRenderTargetProperties(back_, D2D1::SizeU(width_, height_)), backTarget_.GetAddressOf());
@@ -645,6 +678,7 @@ void App::open() {
     // Açılınca arama odaklı: yazmaya başlamak uygulamayı bulur, Enter açar.
     searchFocused_ = true;
     drag_ = DragKind::None;
+    scrollOffset_ = scrollTarget_ = 0;
     layout();
     hover_ = -1;
     hoverAction_ = -1;
@@ -675,6 +709,7 @@ void App::close() {
     isOpen_ = false;
     KillTimer(control_, kAnimationTimer);
     KillTimer(control_, kCloseTimer);
+    KillTimer(control_, kScrollTimer);
     closing_ = nullptr;
     if (GetCapture() == front_) ReleaseCapture();
     drag_ = DragKind::None;
@@ -690,6 +725,10 @@ void App::close() {
     // Ön pencerenin katmanı da boş bir kareye indirilir, yoksa pencere sistemi onu saklar.
     backIcons_.clear();
     wallpaperBitmap_.Reset();
+    blurredBackdrop_.Reset();
+#ifdef DEBUG
+    mosaics_.clear();
+#endif
     backTarget_.Reset();
     wallpaperSource_.Reset();
     snapshot_ = {};
@@ -707,6 +746,7 @@ void App::layout() {
     strip_.clear();
     placed_.clear();
     otherApps_.clear();
+    pinnedSlots_.clear();
     const double s = scale_;
 
     // Masaüstü şeridi
@@ -749,18 +789,7 @@ void App::layout() {
     metrics.labelHeight *= s;
 
     const RECT origin = area_;
-    for (const auto& slot : placeSlots(specs, stage, metrics)) {
-        placed_[slot.id] = slot;
-        auto found = snapshot_.apps.find(slot.id);
-        if (found == snapshot_.apps.end() || found->second.windows.empty()) {
-            size_t index = 0;
-            for (size_t i = 0; i < pins_.size(); ++i) if (pins_[i].id == slot.id) index = i;
-            double h = std::min(slot.pile.h - 4 * s, slot.pile.w * 0.72);
-            double w = std::min(slot.pile.w - 4 * s, h * 4 / 3);
-            hits_.push_back({{slot.pile.midX() - w / 2, slot.pile.bottom() - h - 2 * s, w, h}, HitKind::EmptySlot, index});
-            continue;
-        }
-        const auto& windows = found->second.windows;
+    auto addPile = [&](const PlacedSlot& slot, const std::vector<SceneWindow>& windows) {
         std::vector<double> aspects;
         size_t visible = std::min<size_t>(windows.size(), kMaxVisiblePile);
         for (size_t i = 0; i < visible; ++i) aspects.push_back(windows[i].aspect());
@@ -769,13 +798,30 @@ void App::layout() {
         for (size_t i = 0; i < visible; ++i) {
             Tile tile;
             tile.window = windows[i];
-            tile.target = frames[i];
+            tile.page = tile.target = frames[i];
             const auto& f = windows[i].frame;
             tile.start = {double(f.left - origin.left), double(f.top - origin.top), double(f.right - f.left), double(f.bottom - f.top)};
             tile.flies = windows[i].onCurrentDesktop && !windows[i].minimized;
-            hits_.push_back({frames[i], HitKind::Window, tiles_.size()});
+            hits_.push_back({frames[i], HitKind::Window, tiles_.size(), true, frames[i]});
             tiles_.push_back(tile);
         }
+    };
+
+    pinnedSlots_ = placeSlots(specs, stage, metrics);
+    pinnedArea_ = {stage.x, stage.y, stage.w, separatorY - stage.y};
+    for (const auto& slot : pinnedSlots_) {
+        placed_[slot.id] = slot;
+        auto found = snapshot_.apps.find(slot.id);
+        if (found == snapshot_.apps.end() || found->second.windows.empty()) {
+            size_t index = 0;
+            for (size_t i = 0; i < pins_.size(); ++i) if (pins_[i].id == slot.id) index = i;
+            double h = std::min(slot.pile.h - 4 * s, slot.pile.w * 0.72);
+            double w = std::min(slot.pile.w - 4 * s, h * 4 / 3);
+            Rect rect{slot.pile.midX() - w / 2, slot.pile.bottom() - h - 2 * s, w, h};
+            hits_.push_back({rect, HitKind::EmptySlot, index, true, rect});
+            continue;
+        }
+        addPile(slot, found->second.windows);
     }
 
     for (const auto& [id, app] : snapshot_.apps) {
@@ -784,7 +830,114 @@ void App::layout() {
     std::sort(otherApps_.begin(), otherApps_.end(), [&](const std::string& a, const std::string& b) {
         return snapshot_.apps[a].name < snapshot_.apps[b].name;
     });
+
+    // Kaydırınca gelen bölüm ekranın hemen altından başlar, ilk görünüm değişmez.
+    const double viewportTop = hintBottom + 4 * s;
+    double pageBottom = height_;
+    if (settings_.otherAppsScroll && !otherApps_.empty()) {
+        std::vector<SlotSpec> others;
+        for (const auto& id : otherApps_)
+            others.push_back({id, initialSlotSize(int(snapshot_.apps[id].windows.size()))});
+        for (const auto& slot : placeSlotsFlowing(others, stage.x, stage.w, height_ + 16 * s, height_ - viewportTop - 16 * s, metrics)) {
+            placed_[slot.id] = slot;
+            addPile(slot, snapshot_.apps[slot.id].windows);
+            pageBottom = std::max(pageBottom, slot.frame.bottom() + 16 * s);
+        }
+    }
+    maxScroll_ = pageBottom - height_;
+    viewport_ = maxScroll_ > 0 ? Rect{0, viewportTop, double(width_), height_ - viewportTop} : Rect{0, 0, double(width_), double(height_)};
+    scrollOffset_ = std::min(scrollOffset_, maxScroll_);
+    scrollTarget_ = std::min(scrollTarget_, maxScroll_);
+    applyScroll();
+    // Görünmeyen pencereler uçmaz, yerinde solarak gelir.
+    for (auto& tile : tiles_) tile.flies = tile.flies && viewport_.intersects(tile.target);
 }
+
+/// Üst kenar yalnızca kaydırılmışken kırpılır: açılışta pencereler şeridin hizasından da uçar.
+Rect App::clipRect() const {
+    double top = scrollOffset_ > 0 ? viewport_.y : 0;
+    return {0, top, double(width_), viewport_.bottom() - top};
+}
+
+void App::applyScroll() {
+    for (auto& tile : tiles_) tile.target = shifted(tile.page);
+    for (auto& hit : hits_) if (hit.scrolls) hit.rect = shifted(hit.page);
+}
+
+void App::scrollChanged() {
+    applyScroll();
+    for (auto& tile : tiles_) placeThumbnail(tile, tile.target, matches(tile.window) ? 255 : 45);
+    renderBack();
+    renderFront();
+}
+
+void App::scrollTo(double value) {
+    double next = std::min(std::max(value, 0.0), maxScroll_);
+    if (next == scrollTarget_) return;
+    scrollTarget_ = next;
+    SetTimer(control_, kScrollTimer, 15, nullptr);
+}
+
+void App::stepScroll() {
+    double remaining = scrollTarget_ - scrollOffset_;
+    bool done = std::abs(remaining) < 0.75;
+    scrollOffset_ = done ? scrollTarget_ : scrollOffset_ + remaining * 0.32;
+    if (done) KillTimer(control_, kScrollTimer);
+    scrollChanged();
+}
+
+/// Klavyeyle ya da aramayla seçilen pencere görünür alana gelir; alttaki etiket satırı da görünsün.
+void App::scrollIntoView(const Tile& tile) {
+    if (maxScroll_ <= 0) return;
+    const double margin = 12 * scale_, label = 32 * scale_;
+    double top = tile.page.y - scrollTarget_, bottom = tile.page.bottom() - scrollTarget_ + label;
+    if (bottom > viewport_.bottom() - margin) scrollTo(scrollTarget_ + bottom - (viewport_.bottom() - margin));
+    else if (top < viewport_.y + margin) scrollTo(scrollTarget_ - (viewport_.y + margin - top));
+}
+
+/// Sıralanabilecek sabit hücre. Arama açıkken sıralama olmaz.
+int App::pinAt(int x, int y) const {
+    if (!query_.empty() || pinnedSlots_.size() < 2 || !viewport_.contains(x, y)) return -1;
+    for (size_t i = 0; i < pinnedSlots_.size(); ++i)
+        if (pinnedSlots_[i].frame.contains(x, y + scrollOffset_)) return int(i);
+    return -1;
+}
+
+bool App::onHoveredTile(int x, int y) const {
+    return hover_ >= 0 && hover_ < int(hits_.size()) && hits_[hover_].kind == HitKind::Window &&
+           viewport_.contains(x, y) && tiles_[hits_[hover_].index].target.contains(x, y);
+}
+
+/// Sırası değişen hücreler eski yerlerinden kayarak gelir.
+void App::reorderPin(size_t pin, size_t gap) {
+    std::map<HWND, Rect> previous;
+    for (const auto& tile : tiles_) previous[tile.window.hwnd] = tile.target;
+    moveToGap(pins_, pin, gap);
+    savePins(pins_);
+    refreshScene();
+    for (auto& tile : tiles_) {
+        auto found = previous.find(tile.window.hwnd);
+        tile.start = found != previous.end() ? found->second : tile.target;
+        tile.flies = true;
+    }
+    animationStart_ = GetTickCount64();
+    SetTimer(control_, kAnimationTimer, 15, nullptr);
+}
+
+#ifdef DEBUG
+ID2D1Bitmap* App::mosaicFor(ID2D1RenderTarget* rt, HWND hwnd) {
+    auto found = mosaics_.find(hwnd);
+    if (found != mosaics_.end()) return found->second.Get();
+    ComPtr<ID2D1Bitmap> bitmap;
+    demo::Blocks blocks = demo::capture(hwnd);
+    if (blocks.width > 0) {
+        D2D1_BITMAP_PROPERTIES props{D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96};
+        rt->CreateBitmap(D2D1::SizeU(blocks.width, blocks.height), blocks.pixels.data(), blocks.width * 4, props, bitmap.GetAddressOf());
+    }
+    mosaics_[hwnd] = bitmap;
+    return bitmap.Get();
+}
+#endif
 
 void App::clearStripThumbnails() {
     for (HTHUMBNAIL t : stripThumbs_) DwmUnregisterThumbnail(t);
@@ -797,6 +950,9 @@ void App::clearStripThumbnails() {
 /// Önce kaydedilen alta çizilir; yığın önizlemeleri sonra kaydedildiği için şeridin üstünde kalır.
 void App::registerThumbnails() {
     clearStripThumbnails();
+#ifdef DEBUG
+    if (demo::mosaic()) return;
+#endif
     for (const auto& [rect, desktop] : strip_) {
         std::vector<const SceneWindow*> inDesktop;
         for (const auto& [id, app] : snapshot_.apps)
@@ -829,10 +985,32 @@ void App::registerThumbnails() {
     }
 }
 
-void App::placeThumbnail(Tile& tile, const Rect& r, BYTE opacity) {
+void App::placeThumbnail(Tile& tile, const Rect& rect, BYTE opacity, bool clip) {
     if (!tile.thumb) return;
+    if (!tile.source.cy) DwmQueryThumbnailSourceSize(tile.thumb, &tile.source);
     DWM_THUMBNAIL_PROPERTIES p{};
     p.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY;
+    Rect r = rect;
+    // DWM önizlemesi pencerenin üstünde çizilir, kırpma yok: görünmeyen kısım kaynaktan kesilir.
+    if (tile.source.cy) {
+        p.dwFlags |= DWM_TNP_RECTSOURCE;
+        p.rcSource = {0, 0, tile.source.cx, tile.source.cy};
+        if (clip) {
+            const Rect c = clipRect();
+            double top = std::max(rect.y, c.y), bottom = std::min(rect.bottom(), c.bottom());
+            if (bottom <= top) {
+                p.dwFlags = DWM_TNP_VISIBLE;
+                p.fVisible = FALSE;
+                DwmUpdateThumbnailProperties(tile.thumb, &p);
+                return;
+            }
+            double perPixel = tile.source.cy / rect.h;
+            p.rcSource.top = LONG((top - rect.y) * perPixel);
+            p.rcSource.bottom = LONG((bottom - rect.y) * perPixel);
+            r.y = top;
+            r.h = bottom - top;
+        }
+    }
     p.rcDestination = {LONG(r.x), LONG(r.y), LONG(r.right()), LONG(r.bottom())};
     p.fVisible = TRUE;
     p.opacity = opacity;
@@ -850,7 +1028,7 @@ void App::stepAnimation() {
         if (tile.flies) {
             Rect r{tile.start.x + (tile.target.x - tile.start.x) * e, tile.start.y + (tile.target.y - tile.start.y) * e,
                    tile.start.w + (tile.target.w - tile.start.w) * e, tile.start.h + (tile.target.h - tile.start.h) * e};
-            placeThumbnail(tile, r, 255);
+            placeThumbnail(tile, r, 255, false);
         } else {
             placeThumbnail(tile, tile.target, BYTE(255 * e));
         }
@@ -914,25 +1092,32 @@ void App::renderBack() {
 
     ComPtr<ID2D1DeviceContext> dc;
     rt->QueryInterface(IID_PPV_ARGS(&dc));
-    if (wallpaperSource_ && dc) {
+    if (wallpaperSource_ && dc && !blurredBackdrop_) {
         if (!wallpaperBitmap_) dc->CreateBitmapFromWicBitmap(wallpaperSource_.Get(), wallpaperBitmap_.GetAddressOf());
         ID2D1Bitmap* wallpaper = wallpaperBitmap_.Get();
-        if (wallpaper) {
+        ComPtr<ID2D1BitmapRenderTarget> layer;
+        ComPtr<ID2D1DeviceContext> layerContext;
+        if (wallpaper && SUCCEEDED(rt->CreateCompatibleRenderTarget(D2D1::SizeF(screenW, screenH), layer.GetAddressOf())) &&
+            SUCCEEDED(layer->QueryInterface(IID_PPV_ARGS(&layerContext)))) {
             ComPtr<ID2D1Effect> blur;
-            if (SUCCEEDED(dc->CreateEffect(CLSID_D2D1GaussianBlur, blur.GetAddressOf()))) {
+            if (SUCCEEDED(layerContext->CreateEffect(CLSID_D2D1GaussianBlur, blur.GetAddressOf()))) {
                 blur->SetInput(0, wallpaper);
                 blur->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, float(22 * s));
                 blur->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_HARD);
                 D2D1_SIZE_F size = wallpaper->GetSize();
                 // Ekranı doldur: duvar kağıdı en-boy oranı korunur.
                 float zoom = std::max(screenW / size.width, screenH / size.height);
-                dc->SetTransform(D2D1::Matrix3x2F::Scale(zoom, zoom) *
-                                 D2D1::Matrix3x2F::Translation((screenW - size.width * zoom) / 2, (screenH - size.height * zoom) / 2));
-                dc->DrawImage(blur.Get());
-                dc->SetTransform(D2D1::Matrix3x2F::Identity());
+                layerContext->BeginDraw();
+                layerContext->SetTransform(D2D1::Matrix3x2F::Scale(zoom, zoom) *
+                                           D2D1::Matrix3x2F::Translation((screenW - size.width * zoom) / 2, (screenH - size.height * zoom) / 2));
+                layerContext->DrawImage(blur.Get());
+                layerContext->SetTransform(D2D1::Matrix3x2F::Identity());
+                layerContext->EndDraw();
+                layer->GetBitmap(blurredBackdrop_.GetAddressOf());
             }
         }
     }
+    if (blurredBackdrop_) rt->DrawBitmap(blurredBackdrop_.Get(), D2D1::RectF(0, 0, screenW, screenH));
 
     ComPtr<ID2D1SolidColorBrush> white, soft, faint, dim, accent, line;
     rt->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1, 1), white.GetAddressOf());
@@ -1038,6 +1223,17 @@ void App::renderBack() {
     float dashes[] = {4, 3};
     d2d_->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_LINE_JOIN_MITER, 10, D2D1_DASH_STYLE_CUSTOM, 0), dashes, 2, dash.GetAddressOf());
 
+    // Sayfa: şeridin ve aramanın altında kayar.
+    rt->PushAxisAlignedClip(toD2D(clipRect()), D2D1_ANTIALIAS_MODE_ALIASED);
+#ifdef DEBUG
+    if (demo::mosaic()) {
+        for (const auto& tile : tiles_) {
+            if (auto* bitmap = mosaicFor(rt, tile.window.hwnd))
+                rt->DrawBitmap(bitmap, toD2D(tile.target), matches(tile.window) ? 1.0f : 0.18f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        }
+    }
+#endif
+
     for (const auto& hit : hits_) {
         if (hit.kind != HitKind::EmptySlot) continue;
         rt->DrawRoundedRectangle(D2D1::RoundedRect(toD2D(hit.rect), float(10 * s), float(10 * s)), line.Get(), float(s), dash.Get());
@@ -1048,16 +1244,8 @@ void App::renderBack() {
         }
     }
 
-    for (const auto& pin : pins_) {
-        auto slotIt = placed_.find(pin.id);
-        if (slotIt == placed_.end()) continue;
-        const auto& slot = slotIt->second;
-        auto appIt = snapshot_.apps.find(pin.id);
-        bool hasWindows = appIt != snapshot_.apps.end() && !appIt->second.windows.empty();
-        bool running = appIt != snapshot_.apps.end();
-        std::wstring name = (running ? appIt->second.name : pin.name);
-        if (!hasWindows) name += running ? tx(L" \u00B7 pencere yok", L" \u00B7 no windows") : tx(L" \u00B7 kapal\u0131", L" \u00B7 not running");
-
+    auto drawLabel = [&](const PlacedSlot& placedSlot, const std::wstring& name, const std::wstring& path, bool hasWindows) {
+        const PlacedSlot slot{placedSlot.id, placedSlot.size, shifted(placedSlot.frame), shifted(placedSlot.pile)};
         ComPtr<IDWriteTextLayout> layout;
         double maxWidth = slot.frame.w - 30 * s;
         dwrite_->CreateTextLayout(name.c_str(), UINT32(name.size()), labelFormat_.Get(), float(maxWidth), float(24 * s), layout.GetAddressOf());
@@ -1067,15 +1255,33 @@ void App::renderBack() {
         double total = iconSize + 6 * s + m.width;
         double x = slot.frame.midX() - total / 2;
         double cy = slot.pile.bottom() + (slot.frame.bottom() - slot.pile.bottom()) / 2;
-        if (auto* icon = iconFor(rt, pin.path, backIcons_))
+        if (auto* icon = iconFor(rt, path, backIcons_))
             rt->DrawBitmap(icon, D2D1::RectF(float(x), float(cy - iconSize / 2), float(x + iconSize), float(cy + iconSize / 2)));
         drawText(rt, name, {x + iconSize + 6 * s, cy - 12 * s, maxWidth, 24 * s}, labelFormat_.Get(), hasWindows ? white.Get() : soft.Get(), true);
+    };
+    for (const auto& pin : pins_) {
+        auto slotIt = placed_.find(pin.id);
+        if (slotIt == placed_.end()) continue;
+        auto appIt = snapshot_.apps.find(pin.id);
+        bool hasWindows = appIt != snapshot_.apps.end() && !appIt->second.windows.empty();
+        bool running = appIt != snapshot_.apps.end();
+        std::wstring name = (running ? appIt->second.name : pin.name);
+        if (!hasWindows) name += running ? tx(L" \u00B7 pencere yok", L" \u00B7 no windows") : tx(L" \u00B7 kapal\u0131", L" \u00B7 not running");
+        drawLabel(slotIt->second, name, pin.path, hasWindows);
+    }
+    for (const auto& id : otherApps_) {
+        auto slotIt = placed_.find(id);
+        if (slotIt != placed_.end()) drawLabel(slotIt->second, snapshot_.apps[id].name, snapshot_.apps[id].path, true);
     }
 
     // Diğer açık uygulamalar
     if (!otherApps_.empty()) {
         const double chipH = 32 * s;
-        double chipsY = height_ - chipH - 12 * s;
+        double chipsY = height_ - chipH - 12 * s - scrollOffset_;
+        if (settings_.otherAppsScroll) {
+            drawText(rt, tx(L"Di\u011Fer a\u00E7\u0131k uygulamalar \u00B7 pencereler i\u00E7in kayd\u0131r\u0131n", L"Other open apps \u00B7 scroll for windows"),
+                     {36 * s, chipsY - 26 * s, 420 * s, 20 * s}, smallFormat_.Get(), soft.Get(), true);
+        }
         std::vector<double> widths;
         double total = 0;
         for (const auto& id : otherApps_) {
@@ -1106,10 +1312,11 @@ void App::renderBack() {
                 std::wstring text = app.windows.size() > 1 ? app.name + L" \u00B7 " + std::to_wstring(app.windows.size()) : app.name;
                 drawText(rt, text, {x + 33 * s, chipsY, widths[i] - 40 * s, chipH}, smallFormat_.Get(), white.Get(), false);
             }
-            hits_.push_back({r, HitKind::Chip, i});
+            hits_.push_back({r, HitKind::Chip, i, true, {r.x, r.y + scrollOffset_, r.w, r.h}});
             x += widths[i] + 8 * s;
         }
     }
+    rt->PopAxisAlignedClip();
     rt->EndDraw();
 }
 
@@ -1140,8 +1347,10 @@ void App::renderFront() {
         rt->CreateSolidColorBrush(D2D1::ColorF(float((color >> 16) & 255) / 255, float((color >> 8) & 255) / 255, float(color & 255) / 255), accent.GetAddressOf());
 
         // Hangi masaüstünde olduğu
+        const Rect clip = clipRect();
+        rt->PushAxisAlignedClip(toD2D(clip), D2D1_ANTIALIAS_MODE_ALIASED);
         for (const auto& tile : tiles_) {
-            if (tile.target.w < 80 * s) continue;
+            if (tile.target.w < 80 * s || !clip.intersects(tile.target)) continue;
             // Sürüklenen önizleme yerinden kalktı: rozeti boşlukta kalmasın.
             if (drag_ == DragKind::Tile && &tile == &tiles_[dragTile_]) continue;
             std::wstring badge;
@@ -1178,13 +1387,19 @@ void App::renderFront() {
             rt->FillRoundedRectangle(D2D1::RoundedRect(toD2D(r), float(r.h / 2), float(r.h / 2)), pill.Get());
             rt->DrawTextLayout(D2D1::Point2F(float(r.x + 7 * s), float(r.y)), layout.Get(), white.Get());
         }
+        rt->PopAxisAlignedClip();
 
         // Üstüne gelinen pencere
         if (hover_ >= 0 && hover_ < int(hits_.size()) && hits_[hover_].kind == HitKind::Window) {
             const auto& tile = tiles_[hits_[hover_].index];
             Rect r{tile.target.x - 3 * s, tile.target.y - 3 * s, tile.target.w + 6 * s, tile.target.h + 6 * s};
+            rt->PushAxisAlignedClip(toD2D(clip), D2D1_ANTIALIAS_MODE_ALIASED);
             rt->DrawRoundedRectangle(D2D1::RoundedRect(toD2D(r), float(9 * s), float(9 * s)), accent.Get(), float(2.5 * s));
-            const std::wstring& title = tile.window.title;
+            rt->PopAxisAlignedClip();
+            std::wstring title = tile.window.title;
+#ifdef DEBUG
+            if (demo::mosaic()) title = snapshot_.apps[tile.window.appId].name;
+#endif
             ComPtr<IDWriteTextLayout> layout;
             dwrite_->CreateTextLayout(title.c_str(), UINT32(title.size()), smallFormat_.Get(), float(420 * s), float(26 * s), layout.GetAddressOf());
             DWRITE_TEXT_METRICS m{};
@@ -1196,7 +1411,7 @@ void App::renderFront() {
             rt->DrawTextLayout(D2D1::Point2F(float(x + 11 * s), float(y)), layout.Get(), white.Get());
 
             // Köşe düğmeleri
-            if (drag_ == DragKind::None) {
+            if (drag_ == DragKind::None && clip.contains(tile.target.right() - 1, tile.target.y + 9 * s)) {
                 Rect first = actionRect(tile, 0), last = actionRect(tile, kActionCount - 1);
                 Rect bar{first.x - 3 * s, first.y - 3 * s, last.right() - first.x + 6 * s, first.h + 6 * s};
                 ComPtr<ID2D1SolidColorBrush> barBrush, hot, red;
@@ -1318,6 +1533,23 @@ void App::renderFront() {
                 const Rect& any = strip_.front().first;
                 rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(float(gapX - 2 * s), float(any.y - 3 * s), float(gapX + 2 * s), float(any.bottom() + 3 * s)), float(2 * s), float(2 * s)), accent.Get());
             }
+            if (slotDrop_) {
+                float top = float(slotDrop_->markTop - scrollOffset_), bottom = float(slotDrop_->markBottom - scrollOffset_), mark = float(slotDrop_->markX);
+                rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(mark - float(2 * s), top, mark + float(2 * s), bottom), float(2 * s), float(2 * s)), accent.Get());
+            }
+            bool tileHasGhost = drag_ == DragKind::Tile && tiles_[dragTile_].thumb;
+            if (dragPin_ >= 0 && dragPin_ < int(pins_.size()) && !tileHasGhost) {
+                // Önizlemesi olmayan hücre: imlecin altında uygulamanın adı gider.
+                const std::wstring& name = pins_[dragPin_].name;
+                ComPtr<IDWriteTextLayout> label;
+                dwrite_->CreateTextLayout(name.c_str(), UINT32(name.size()), labelFormat_.Get(), float(300 * s), float(32 * s), label.GetAddressOf());
+                DWRITE_TEXT_METRICS m{};
+                label->GetMetrics(&m);
+                Rect g{dragX_ - (m.width + 28 * s) / 2, dragY_ + 14 * s, m.width + 28 * s, 32 * s};
+                rt->FillRoundedRectangle(D2D1::RoundedRect(toD2D(g), float(g.h / 2), float(g.h / 2)), pill.Get());
+                rt->DrawRoundedRectangle(D2D1::RoundedRect(toD2D(g), float(g.h / 2), float(g.h / 2)), accent.Get(), float(1.5 * s));
+                rt->DrawTextLayout(D2D1::Point2F(float(g.x + 14 * s), float(g.y)), label.Get(), white.Get());
+            }
             if (drag_ == DragKind::Space && dragSpace_ < strip_.size()) {
                 const Rect& src = strip_[dragSpace_].first;
                 Rect g{dragX_ - src.w / 2, dragY_ + 10 * s, src.w, src.h};
@@ -1342,7 +1574,7 @@ void App::renderFront() {
 
 const Hit* App::hitAt(int x, int y) const {
     for (auto it = hits_.rbegin(); it != hits_.rend(); ++it)
-        if (it->rect.contains(x, y)) return &*it;
+        if (it->rect.contains(x, y) && (!it->scrolls || viewport_.contains(x, y))) return &*it;
     return nullptr;
 }
 
@@ -1445,6 +1677,7 @@ void App::mouseDown(int x, int y) {
         const Rect& t = tiles_[hits_[hover_].index].target;
         if (t.contains(x, y)) pressHit_ = hover_;
     }
+    pressPin_ = pinAt(x, y);
     pressX_ = x;
     pressY_ = y;
     SetCapture(front_);
@@ -1470,28 +1703,51 @@ void App::updateDrop(int x, int y) {
             }
         }
     }
-    if (desktop != dropDesktop_ || gap != dropGap_ || isNew != dropNew_ || drag_ == DragKind::Space) {
+    std::optional<SlotDrop> slotDrop;
+    if (dragPin_ >= 0 && desktop < 0 && !isNew && viewport_.contains(x, y)) {
+        double pageY = y + scrollOffset_;
+        Rect area{pinnedArea_.x - 24 * scale_, pinnedArea_.y - 8 * scale_, pinnedArea_.w + 48 * scale_, pinnedArea_.h + 16 * scale_};
+        if (area.contains(x, pageY)) slotDrop = slotDropAt(x, pageY, size_t(dragPin_), pinnedSlots_, 20 * scale_);
+    }
+    if (desktop != dropDesktop_ || gap != dropGap_ || isNew != dropNew_ || slotDrop != slotDrop_ ||
+        drag_ == DragKind::Space || drag_ == DragKind::Slot) {
         dropDesktop_ = desktop;
         dropGap_ = gap;
         dropNew_ = isNew;
+        slotDrop_ = slotDrop;
         renderFront();
     }
 }
 
 void App::mouseMoved(int x, int y, bool buttonDown) {
     const double s = scale_;
-    if (buttonDown && pressHit_ >= 0 && drag_ == DragKind::None && std::hypot(x - pressX_, y - pressY_) > 6 * s && hoverAction_ < 0) {
-        const Hit& hit = hits_[pressHit_];
-        if (hit.kind == HitKind::Window) {
+    if (buttonDown && (pressHit_ >= 0 || pressPin_ >= 0) && drag_ == DragKind::None && std::hypot(x - pressX_, y - pressY_) > 6 * s && hoverAction_ < 0) {
+        const HitKind kind = pressHit_ >= 0 ? hits_[pressHit_].kind : HitKind::EmptySlot;
+        const size_t index = pressHit_ >= 0 ? hits_[pressHit_].index : 0;
+        dragPin_ = -1;
+        slotDrop_.reset();
+        if (kind == HitKind::Window) {
             drag_ = DragKind::Tile;
-            dragTile_ = hit.index;
+            dragTile_ = index;
+            dragPin_ = pressPin_;
             // Önizlemeler kayıt sırasıyla çizilir: yeniden kayıt en üste çıkarır.
             Tile& tile = tiles_[dragTile_];
-            if (tile.thumb) DwmUnregisterThumbnail(tile.thumb);
-            if (FAILED(DwmRegisterThumbnail(back_, tile.window.hwnd, &tile.thumb))) tile.thumb = nullptr;
-        } else if (hit.kind == HitKind::Space) {
+            if (tile.thumb) {
+                DwmUnregisterThumbnail(tile.thumb);
+                if (FAILED(DwmRegisterThumbnail(back_, tile.window.hwnd, &tile.thumb))) tile.thumb = nullptr;
+            }
+            tile.source = {};
+            // Sıralanırken hücrenin diğer pencereleri de soluklaşır.
+            if (dragPin_ >= 0) {
+                for (auto& other : tiles_)
+                    if (&other != &tile && other.window.appId == pins_[dragPin_].id) placeThumbnail(other, other.target, 90);
+            }
+        } else if (kind == HitKind::Space) {
             drag_ = DragKind::Space;
-            dragSpace_ = hit.index;
+            dragSpace_ = index;
+        } else if (kind == HitKind::EmptySlot && pressPin_ >= 0) {
+            drag_ = DragKind::Slot;
+            dragPin_ = pressPin_;
         }
         dropDesktop_ = dropGap_ = -1;
         dropNew_ = false;
@@ -1503,7 +1759,7 @@ void App::mouseMoved(int x, int y, bool buttonDown) {
         if (drag_ == DragKind::Tile) {
             Tile& tile = tiles_[dragTile_];
             double w = std::min(tile.target.w, 180 * s), h = w / tile.window.aspect();
-            placeThumbnail(tile, {x - w / 2, y + 14 * s, w, h}, 230);
+            placeThumbnail(tile, {x - w / 2, y + 14 * s, w, h}, 230, false);
         }
         updateDrop(x, y);
         return;
@@ -1513,8 +1769,7 @@ void App::mouseMoved(int x, int y, bool buttonDown) {
     // Üstüne gelinen önizleme, imleç üstünde kaldıkça seçili kalır; yoksa çakışan yığında
     // arkadaki pencere seçimi kapar ve düğmelere ulaşılamaz.
     int next = -1;
-    if (hover_ >= 0 && hover_ < int(hits_.size()) && hits_[hover_].kind == HitKind::Window &&
-        tiles_[hits_[hover_].index].target.contains(x, y)) {
+    if (onHoveredTile(x, y)) {
         next = hover_;
     } else if (const Hit* hit = hitAt(x, y)) {
         next = int(hit - hits_.data());
@@ -1534,8 +1789,18 @@ void App::mouseMoved(int x, int y, bool buttonDown) {
 void App::finishDrag(int x, int y) {
     updateDrop(x, y);
     DragKind kind = drag_;
+    int pin = dragPin_;
+    std::optional<SlotDrop> slotDrop = slotDrop_;
     drag_ = DragKind::None;
-    if (kind == DragKind::Tile) {
+    dragPin_ = -1;
+    slotDrop_.reset();
+    if (pin >= 0 && slotDrop) {
+        dropDesktop_ = dropGap_ = -1;
+        dropNew_ = false;
+        reorderPin(size_t(pin), slotDrop->gap);
+    } else if (kind == DragKind::Slot) {
+        renderFront();
+    } else if (kind == DragKind::Tile) {
         SceneWindow window = tiles_[dragTile_].window;
         bool changed = false;
         if (dropNew_) {
@@ -1550,7 +1815,7 @@ void App::finishDrag(int x, int y) {
         if (changed) {
             refreshScene();
         } else {
-            placeThumbnail(tiles_[dragTile_], tiles_[dragTile_].target, 255);
+            applyQuery();
             renderFront();
         }
     } else if (kind == DragKind::Space) {
@@ -1590,8 +1855,7 @@ void App::mouseUp(int x, int y) {
     // Tıklama, basılan yerde bırakmaktır.
     const Hit* hit = hitAt(x, y);
     int released = hit ? int(hit - hits_.data()) : -1;
-    if (hover_ >= 0 && hover_ < int(hits_.size()) && hits_[hover_].kind == HitKind::Window &&
-        tiles_[hits_[hover_].index].target.contains(x, y)) released = hover_;
+    if (onHoveredTile(x, y)) released = hover_;
     if (press != released) return;
     if (released == hover_ && hover_ >= 0) {
         Hit copy = hits_[hover_];
@@ -1607,7 +1871,8 @@ void App::mouseUp(int x, int y) {
 
 void App::rightClick(int x, int y) {
     std::string id;
-    for (const auto& [slotId, slot] : placed_) if (slot.frame.contains(x, y)) id = slotId;
+    if (viewport_.contains(x, y))
+        for (const auto& [slotId, slot] : placed_) if (slot.frame.contains(x, y + scrollOffset_)) id = slotId;
     if (id.empty()) {
         const Hit* hit = hitAt(x, y);
         if (hit && hit->kind == HitKind::Chip) id = otherApps_[hit->index];
@@ -1749,6 +2014,15 @@ void App::character(wchar_t ch) {
     updateAppResults();
     renderBack();
     renderFront();
+    // En iyi eşleşme aşağıda kaldıysa Enter'ın nereye gideceği görünsün.
+    if (!query_.empty()) {
+        for (const auto& tile : tiles_) {
+            if (matches(tile.window)) {
+                scrollIntoView(tile);
+                break;
+            }
+        }
+    }
 }
 
 void App::scanInstalled() {
@@ -1924,6 +2198,7 @@ void App::moveSelection(WPARAM vk) {
     if (next < 0 || next == hover_) return;
     hover_ = next;
     hoverAction_ = -1;
+    scrollIntoView(tiles_[hits_[next].index]);
     renderFront();
 }
 
@@ -1939,6 +2214,7 @@ void App::writeLayoutTrace() const {
         out << tag << ' ' << int(r.x + area_.left) << ' ' << int(r.y + area_.top) << ' ' << int(r.w) << ' ' << int(r.h) << ' ' << toUtf8(text) << '\n';
     };
     for (const auto& t : tiles_) pr("T", t.target, t.window.title);
+    for (const auto& [id, slot] : placed_) pr("S", slot.frame, fromUtf8(id));
     for (const auto& [r, d] : strip_) pr("D", r, d.name);
     pr("N", newDesktopRect_, L"");
     pr("H", hintRect_, L"");
@@ -2024,6 +2300,7 @@ LRESULT App::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_TIMER:
         if (wp == kAnimationTimer) stepAnimation();
+        if (wp == kScrollTimer) stepScroll();
         if (wp == kCloseTimer) closeTimerTick();
         if (wp == kTaskbarTimer) {
             if (settings_.taskbarPreview) preview_.tick();
@@ -2046,6 +2323,17 @@ LRESULT App::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_RBUTTONUP:
         if (hwnd == front_ && isOpen_) rightClick(short(LOWORD(lp)), short(HIWORD(lp)));
+        return 0;
+    case WM_MOUSEWHEEL:
+        if (isOpen_ && maxScroll_ > 0 && drag_ == DragKind::None && (query_.empty() || appResults_.empty())) {
+            KillTimer(control_, kAnimationTimer);
+            if (hover_ >= 0) {
+                hover_ = -1;
+                hoverAction_ = -1;
+                renderFront();
+            }
+            scrollTo(scrollTarget_ - GET_WHEEL_DELTA_WPARAM(wp) * scale_);
+        }
         return 0;
     case WM_CHAR:
         if (isOpen_) character(wchar_t(wp));

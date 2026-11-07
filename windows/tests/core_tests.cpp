@@ -75,6 +75,37 @@ int main() {
           L"c:\\program files\\windowsapps\\claude__pzs8sxrjxfjjc\\app\\claude.exe");
     CHECK(stableAppPath(L"c:\\windows\\notepad.exe") == L"c:\\windows\\notepad.exe");
 
+    // Kaydırılan bölüm yukarıdan başlar, uygulama çoğaldıkça uzar.
+    std::vector<SlotSpec> many;
+    for (int i = 0; i < 48; ++i) many.push_back({"app" + std::to_string(i), SlotSize::Small});
+    auto flowing = placeSlotsFlowing(many, 0, 1600, 1000, 800);
+    CHECK(flowing.size() == 48 && near(flowing.front().frame.y, 1000) && near(flowing.front().pile.y, 1000));
+    CHECK(flowing.back().frame.bottom() > 1800);
+    CHECK(placeSlotsFlowing({}, 0, 1600, 0, 800).empty());
+
+    // Sürükleme aralığı: a b c / d e
+    auto dropSlot = [](const char* id, double x, double y) {
+        Rect frame{x, y, 100, 100};
+        return PlacedSlot{id, SlotSize::Small, frame, frame};
+    };
+    std::vector<PlacedSlot> grid{dropSlot("a", 0, 0), dropSlot("b", 120, 0), dropSlot("c", 240, 0), dropSlot("d", 0, 120), dropSlot("e", 120, 120)};
+    CHECK(slotDropAt(200, 50, 4, grid, 20)->gap == 2);
+    CHECK(!slotDropAt(110, 50, 1, grid, 20) && !slotDropAt(200, 50, 1, grid, 20));
+    auto rowEnd = slotDropAt(400, 50, 0, grid, 20);
+    CHECK(rowEnd->gap == 3 && near(rowEnd->markX, 350));
+    CHECK(slotDropAt(10, 300, 0, grid, 20)->gap == 3);
+    CHECK(!slotDropAt(0, 0, 9, grid, 20));
+
+    std::vector<int> order{0, 1, 2, 3, 4};
+    moveToGap(order, 0, 3);
+    CHECK((order == std::vector<int>{1, 2, 0, 3, 4}));
+    order = {0, 1, 2, 3, 4};
+    moveToGap(order, 4, 2);
+    CHECK((order == std::vector<int>{0, 1, 4, 2, 3}));
+    order = {0, 1, 2};
+    moveToGap(order, 0, 3);
+    CHECK((order == std::vector<int>{1, 2, 0}));
+
     std::printf("%d kontrol, %d hata\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

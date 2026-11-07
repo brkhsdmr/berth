@@ -85,7 +85,7 @@ constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersio
 constexpr const wchar_t* kRunValue = L"Berth";
 
 enum Control {
-    IdShortcutOn = 100, IdShortcut, IdCornerDelay, IdTouchOpen, IdTaskbar, IdLaunch, IdLanguage,
+    IdShortcutOn = 100, IdShortcut, IdCornerDelay, IdTouchOpen, IdTaskbar, IdOtherAppsScroll, IdLaunch, IdLanguage,
     IdPins, IdPinUp, IdPinDown, IdPinSmall, IdPinMedium, IdPinLarge, IdPinRemove, IdPinAdd,
     IdRemoteHost, IdRemoteToken, IdRemoteApply,
     IdLayouts, IdLayoutRestore, IdLayoutRemove, IdLayoutName, IdLayoutRename, IdLayoutSave, IdLayoutKey, IdLayoutKeyClear,
@@ -126,6 +126,7 @@ Settings Settings::load() {
         else if (key == L"corner" && value >= 0 && value <= 4) s.corner = HotCorner(value);
         else if (key == L"cornerDelayMs" && value >= 0) s.cornerDelayMs = value;
         else if (key == L"taskbarPreview") s.taskbarPreview = value != 0;
+        else if (key == L"otherAppsScroll") s.otherAppsScroll = value != 0;
         else if (key == L"language" && value >= 0 && value <= 2) s.language = value;
     }
     return s;
@@ -139,6 +140,7 @@ void Settings::save() const {
         << L"corner=" << int(corner) << L"\n"
         << L"cornerDelayMs=" << cornerDelayMs << L"\n"
         << L"taskbarPreview=" << (taskbarPreview ? 1 : 0) << L"\n"
+        << L"otherAppsScroll=" << (otherAppsScroll ? 1 : 0) << L"\n"
         << L"remoteHost=" << remoteHost << L"\n"
         << L"remoteToken=" << remoteToken << L"\n"
         << L"language=" << language << L"\n";
@@ -708,8 +710,13 @@ void SettingsWindow::buildPage() {
                 L"Hovering a taskbar icon also shows that app's windows on other desktops."),
              140);
         addButton(IdTaskbar, L"", ButtonKind::Toggle, right - 104, 256 + 24, 104, 28);
+        card(340, 76, 0xE8A9, tx(L"Aşağı kaydırınca diğer uygulamaların pencereleri", L"Other apps' windows when scrolling down"),
+             tx(L"Sabit olmayan uygulamalar sahnenin altında kendi hücreleri ve önizlemeleriyle listelenir.",
+                L"Apps you haven't pinned are listed below the scene with their own cells and previews."),
+             140);
+        addButton(IdOtherAppsScroll, L"", ButtonKind::Toggle, right - 104, 340 + 24, 104, 28);
         std::wstring version = appVersion();
-        card(340, 76, 0xE946, L"Berth",
+        card(424, 76, 0xE946, L"Berth",
              (version.empty() ? L"" : tx(L"Sürüm ", L"Version ") + version + L" · ") +
                  tx(L"Masaüstleri ve pencereler için sabit yerleşimli sahne.", L"A fixed-layout overview of your desktops and windows."));
         break;
@@ -1049,8 +1056,9 @@ void SettingsWindow::editPin(Callbacks::PinEdit edit, int value) {
 void SettingsWindow::sync() {
     setToggled(toggles_, IdShortcutOn, settings_.shortcutEnabled);
     setToggled(toggles_, IdTaskbar, settings_.taskbarPreview);
+    setToggled(toggles_, IdOtherAppsScroll, settings_.otherAppsScroll);
     if (page_ == 4) setToggled(toggles_, IdLaunch, launch::enabled());
-    for (int id : {IdShortcutOn, IdTaskbar, IdLaunch})
+    for (int id : {IdShortcutOn, IdTaskbar, IdOtherAppsScroll, IdLaunch})
         if (HWND c = GetDlgItem(hwnd_, id)) InvalidateRect(c, nullptr, FALSE);
 
     if (HWND recorder = GetDlgItem(hwnd_, IdShortcut)) {
@@ -1154,6 +1162,9 @@ void SettingsWindow::command(int id, int code) {
         return;
     case IdTaskbar:
         settings_.taskbarPreview = !settings_.taskbarPreview;
+        break;
+    case IdOtherAppsScroll:
+        settings_.otherAppsScroll = !settings_.otherAppsScroll;
         break;
     case IdLaunch: {
         bool on = !isToggled(toggles_, IdLaunch);

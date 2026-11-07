@@ -3,7 +3,10 @@
 // Hücrenin yeri yalnızca sıra ve hücre boyutundan gelir. Pencere sayısı girdi değildir,
 // bu yüzden pencere açmak ya da kapatmak hiçbir hücrenin yerini değiştiremez.
 #pragma once
+#include <algorithm>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 #include "geometry.h"
 
@@ -60,6 +63,32 @@ struct StageMetrics {
 };
 
 std::vector<PlacedSlot> placeSlots(const std::vector<SlotSpec>& slots, const Rect& stage, const StageMetrics& metrics = {});
+
+/// Kaydırılarak ulaşılan bölüm: hücreler `top`tan başlar, ortalanmaz. Uygulama çoğaldıkça bölüm
+/// uzar; hücreler tek ekrana sığsın diye küçülmez.
+std::vector<PlacedSlot> placeSlotsFlowing(const std::vector<SlotSpec>& slots, double x, double width, double top,
+                                          double viewportHeight, const StageMetrics& metrics = {});
+
+/// Sürüklenen hücrenin bırakılacağı aralık ve aralığı gösteren çizgi.
+struct SlotDrop {
+    size_t gap = 0;
+    double markX = 0, markTop = 0, markBottom = 0;
+    bool operator==(const SlotDrop&) const = default;
+};
+
+/// İmlecin altındaki aralık. Satır, imlece dikine en yakın olandır; hücrenin yeri değişmeyecekse
+/// (kendi iki yanı) boş döner. `slots` yerleşim sırasındadır.
+std::optional<SlotDrop> slotDropAt(double x, double y, size_t moving, const std::vector<PlacedSlot>& slots, double gap);
+
+/// Öğeyi iki komşunun arasına taşır. `gap`, taşımadan önceki sıraya göredir: 0 en baş, boyut en son.
+template <class T>
+void moveToGap(std::vector<T>& items, size_t index, size_t gap) {
+    if (index >= items.size()) return;
+    gap = (std::min)(gap, items.size());
+    T item = std::move(items[index]);
+    items.erase(items.begin() + index);
+    items.insert(items.begin() + (gap > index ? gap - 1 : gap), std::move(item));
+}
 
 /// Yığında gösterilen en fazla pencere; kalanı "+N" olur.
 constexpr int kMaxVisiblePile = 6;
