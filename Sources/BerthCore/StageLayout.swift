@@ -41,6 +41,15 @@ public struct PlacedSlot: Equatable, Sendable {
     public var pile: CGRect
 }
 
+/// Sürüklenen hücrenin bırakılacağı aralık ve aralığı gösteren çizgi.
+public struct SlotDrop: Equatable, Sendable {
+    /// `Arrangement.move(_:toGap:)` için aralık.
+    public var gap: Int
+    public var markX: CGFloat
+    public var markMinY: CGFloat
+    public var markMaxY: CGFloat
+}
+
 public struct StageMetrics: Sendable {
     public var gap: CGFloat = 20
     public var rowGap: CGFloat = 18
@@ -99,6 +108,67 @@ public enum StageLayout {
             y += rowHeight + metrics.rowGap
         }
         return placed
+    }
+
+    /// Kaydırılarak ulaşılan bölüm: hücreler `top`tan başlar, ortalanmaz. Uygulama çoğaldıkça bölüm
+    /// uzar; hücreler tek ekrana sığsın diye küçülmez.
+    public static func placeFlowing(
+        _ slots: [SlotSpec],
+        x: CGFloat,
+        width: CGFloat,
+        top: CGFloat,
+        viewportHeight: CGFloat,
+        metrics: StageMetrics = StageMetrics()
+    ) -> [PlacedSlot] {
+        let pages = max(1, (slots.count + flowingSlotsPerPage - 1) / flowingSlotsPerPage)
+        var flowing = metrics
+        flowing.maxRows = metrics.maxRows * pages
+        let stage = CGRect(x: x, y: top, width: width, height: viewportHeight * CGFloat(pages))
+        let placed = place(slots, in: stage, metrics: flowing)
+        guard let first = placed.first else { return [] }
+        let shift = top - first.frame.minY
+        return placed.map { slot in
+            var moved = slot
+            moved.frame.origin.y += shift
+            moved.pile.origin.y += shift
+            return moved
+        }
+    }
+
+    private static let flowingSlotsPerPage = 12
+
+    /// İmlecin altındaki aralık. Satır, imlece dikine en yakın olandır; hücrenin yeri değişmeyecekse
+    /// (kendi iki yanı) nil döner.
+    /// - Parameter slots: Yerleşim sırasıyla hücreler (`place` sonucu).
+    public static func drop(
+        at point: CGPoint,
+        moving id: String,
+        in slots: [PlacedSlot],
+        metrics: StageMetrics = StageMetrics()
+    ) -> SlotDrop? {
+        guard let index = slots.firstIndex(where: { $0.id == id }) else { return nil }
+
+        var rows: [Range<Int>] = []
+        var start = 0
+        for current in slots.indices.dropFirst() where slots[current].frame.minY != slots[start].frame.minY {
+            rows.append(start..<current)
+            start = current
+        }
+        rows.append(start..<slots.count)
+
+        func distance(_ row: Range<Int>) -> CGFloat {
+            let frame = slots[row.lowerBound].frame
+            return max(frame.minY - point.y, point.y - frame.maxY, 0)
+        }
+        guard let row = rows.min(by: { distance($0) < distance($1) }) else { return nil }
+
+        let gap = row.first { point.x < slots[$0].frame.midX } ?? row.upperBound
+        guard gap != index, gap != index + 1 else { return nil }
+        let x = gap < row.upperBound
+            ? slots[gap].frame.minX - metrics.gap / 2
+            : slots[row.upperBound - 1].frame.maxX + metrics.gap / 2
+        let frame = slots[row.lowerBound].frame
+        return SlotDrop(gap: gap, markX: x, markMinY: frame.minY, markMaxY: frame.maxY)
     }
 
     static func pack(_ slots: [SlotSpec], unitsPerRow: Int) -> [[SlotSpec]] {

@@ -81,6 +81,8 @@ struct SceneContent {
     var wallpaper: WallpaperStore.Entry?
     /// Pencere görüntüleri bekleniyor mu? Yoksa kartlar simge ve başlıkla çizilir.
     var previewsAvailable: Bool
+    /// Aşağı kaydırınca sabit olmayan uygulamalar kendi hücreleriyle listelenir.
+    var showsOtherAppWindows: Bool
     /// Önizlemeler kapalıyken izin uyarısı gösterilmez, bu yüzden `true` sayılır.
     var screenRecordingGranted: Bool
     var accessibilityGranted: Bool
@@ -146,6 +148,9 @@ final class SceneView: NSView {
     private let backdrop = CALayer()
     private let dim = CALayer()
     private let chrome = CALayer()
+    /// Kaydırılan kısmı kırpar. İçindekiler görünüm uzayında kurulur, kaydırma `bounds` kökenidir.
+    private let page = CALayer()
+    private let pageChrome = CALayer()
     private let tileHost = CALayer()
     private let top = CALayer()
 
@@ -157,7 +162,10 @@ final class SceneView: NSView {
     private var chipLayers: [String: CALayer] = [:]
     private var slotLayers: [String: [CALayer]] = [:]
     private var slotFrames: [String: CGRect] = [:]
+    /// Kaymayan hedefler; görünüm uzayında.
     private var hits: [Hit] = []
+    /// Sayfayla kayan hedefler; sayfa uzayında (`scrollOffset` kadar aşağıda).
+    private var pageHits: [Hit] = []
     private var fanHits: [Hit] = []
     private var fanApp: String?
     private var fanLayer: CALayer?
@@ -180,11 +188,25 @@ final class SceneView: NSView {
         var tile: Tile?
         var ghost: CALayer
         var gap: Int?
+        /// Sürüklenen sabit uygulama: başka bir hücreye bırakılırsa sırası değişir.
+        var slot: String?
+        var slotDrop: SlotDrop?
+        var faded: [(layer: CALayer, opacity: Float)] = []
     }
     private var pressed: (target: Target?, point: CGPoint)?
     private var drag: Drag?
     private var spaceRects: [(id: UInt64, rect: CGRect)] = []
     private var insertionMark: CALayer?
+
+    // Kaydırma
+    private var scrollOffset: CGFloat = 0
+    private var maxScroll: CGFloat = 0
+    /// Sayfanın göründüğü alan; kaydırılacak bir şey yoksa tüm görünüm.
+    private var viewport: CGRect = .zero
+    /// Animasyonla başa dönerken üst kenar, animasyon bitene kadar kırpılı kalır.
+    private var holdsTopClip = false
+    private var pinnedSlots: [PlacedSlot] = []
+    private var pinnedArea: CGRect = .zero
 
     private var scale: CGFloat { content?.backingScale ?? 2 }
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
@@ -196,9 +218,13 @@ final class SceneView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
         layer?.masksToBounds = false
-        for sublayer in [backdrop, dim, chrome, tileHost, top] {
+        for sublayer in [backdrop, dim, chrome, page, top] {
             sublayer.actions = Self.noActions
             layer?.addSublayer(sublayer)
+        }
+        for sublayer in [pageChrome, tileHost] {
+            sublayer.actions = Self.noActions
+            page.addSublayer(sublayer)
         }
         backdrop.contentsGravity = .resizeAspectFill
         backdrop.masksToBounds = true
@@ -238,6 +264,7 @@ final class SceneView: NSView {
         InstalledApps.shared.refresh()
         // Açılınca arama odaklı: yazmaya başlamak uygulamayı bulur, ↩ açar.
         searchFocused = true
+        scrollOffset = 0
         withoutActions { build() }
         animateIn()
     }
@@ -248,7 +275,9 @@ final class SceneView: NSView {
         current.usable = usable
         content = current
         closeFan()
+        let previous = slotFrames
         withoutActions { build() }
+        animateSlotMoves(from: previous)
     }
 
     /// Pencere kapandıktan sonra sahneyi tazeler. Hücrelerin yeri değişmez, kaplama açık kalır.
@@ -285,11 +314,14 @@ final class SceneView: NSView {
 
     func teardown() {
         withoutActions {
-            for host in [chrome, tileHost, top] {
+            for host in [chrome, pageChrome, tileHost, top] {
                 host.sublayers?.forEach { $0.removeFromSuperlayer() }
                 host.removeAllAnimations()
                 host.opacity = 1
             }
+            pageChrome.isHidden = false
+            page.removeAllAnimations()
+            page.masksToBounds = false
             backdrop.removeAllAnimations()
             dim.removeAllAnimations()
             backdrop.contents = nil
@@ -303,6 +335,7 @@ final class SceneView: NSView {
         slotLayers = [:]
         slotFrames = [:]
         hits = []
+        pageHits = []
         fanHits = []
         fanApp = nil
         fanLayer = nil
@@ -316,6 +349,10 @@ final class SceneView: NSView {
         drag = nil
         spaceRects = []
         insertionMark = nil
+        scrollOffset = 0
+        maxScroll = 0
+        holdsTopClip = false
+        pinnedSlots = []
     }
 
     // MARK: - Kurma
@@ -329,7 +366,7 @@ final class SceneView: NSView {
 
     private func build() {
         guard let content else { return }
-        for host in [chrome, tileHost, top] { host.sublayers?.forEach { $0.removeFromSuperlayer() } }
+        for host in [chrome, pageChrome, tileHost, top] { host.sublayers?.forEach { $0.removeFromSuperlayer() } }
         tiles = [:]
         miniWindows = [:]
         spaceThumbs = [:]
@@ -338,6 +375,7 @@ final class SceneView: NSView {
         slotLayers = [:]
         slotFrames = [:]
         hits = []
+        pageHits = []
         hovered = nil
         tip = nil
         spaceRects = []
@@ -345,7 +383,7 @@ final class SceneView: NSView {
         drag = nil
         pressed = nil
 
-        for host in [backdrop, dim, chrome, tileHost, top] {
+        for host in [backdrop, dim, chrome, pageChrome, tileHost, top] {
             host.frame = bounds
             host.contentsScale = scale
         }
@@ -372,6 +410,8 @@ final class SceneView: NSView {
         buildChips(others, y: chipsY, height: chipHeight, x: stage.minX, width: stage.width)
 
         let placed = StageLayout.place(content.arrangement.specs, in: stage)
+        pinnedSlots = placed
+        pinnedArea = CGRect(x: stage.minX, y: stage.minY, width: stage.width, height: separatorY - stage.minY)
         var z: CGFloat = 1
         for slot in placed {
             slotFrames[slot.id] = slot.frame
@@ -386,7 +426,117 @@ final class SceneView: NSView {
             }
             buildLabel(app, slot: slot)
         }
+
+        // Kaydırınca gelen bölüm ekranın hemen altından başlar, ilk görünüm değişmez.
+        let viewportTop = hintBottom + 6
+        var pageBottom = u.maxY
+        if content.showsOtherAppWindows, !others.isEmpty {
+            let specs = others.map {
+                SlotSpec(id: $0.id, size: content.arrangement.unpinnedSize(of: $0.id, windowCount: $0.windows.count))
+            }
+            let flowing = StageLayout.placeFlowing(
+                specs, x: stage.minX, width: stage.width, top: u.maxY + 16, viewportHeight: u.maxY - viewportTop - 16
+            )
+            for slot in flowing {
+                slotFrames[slot.id] = slot.frame
+                guard let app = content.snapshot.app(slot.id) else { continue }
+                buildPile(app, slot: slot, z: &z)
+                buildLabel(app, slot: slot)
+                pageBottom = max(pageBottom, slot.frame.maxY + 16)
+            }
+        }
+        maxScroll = max(0, pageBottom - u.maxY)
+        viewport = maxScroll > 0
+            ? CGRect(x: bounds.minX, y: viewportTop, width: bounds.width, height: u.maxY - viewportTop)
+            : bounds
+        scrollOffset = min(scrollOffset, maxScroll)
+        applyScroll()
         applyQuery()
+    }
+
+    // MARK: Kaydırma
+
+    private func applyScroll() {
+        let scrollable = maxScroll > 0
+        let clipTop = scrollable && (scrollOffset > 0 || holdsTopClip) ? viewport.minY : bounds.minY
+        let clipBottom = scrollable ? viewport.maxY : bounds.maxY
+        page.masksToBounds = scrollable
+        page.frame = CGRect(x: bounds.minX, y: clipTop, width: bounds.width, height: clipBottom - clipTop)
+        page.bounds.origin.y = clipTop + scrollOffset
+    }
+
+    private func setScroll(_ value: CGFloat, animated: Bool = false) {
+        let next = min(max(value, 0), maxScroll)
+        guard next != scrollOffset else { return }
+        let previous = scrollOffset
+        guard animated, !reduceMotion else {
+            scrollOffset = next
+            withoutActions { applyScroll() }
+            return
+        }
+        scrollOffset = next
+        holdsTopClip = true
+        withoutActions { applyScroll() }
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.holdsTopClip = false
+                self.withoutActions { self.applyScroll() }
+            }
+        }
+        let slide = CABasicAnimation(keyPath: "bounds.origin.y")
+        slide.fromValue = page.bounds.origin.y - next + previous
+        slide.toValue = page.bounds.origin.y
+        slide.duration = 0.24
+        slide.timingFunction = Self.flight
+        page.add(slide, forKey: "scroll")
+        CATransaction.commit()
+    }
+
+    /// Klavyeyle ya da aramayla seçilen pencere görünür alana gelir.
+    private func scrollIntoView(_ tile: Tile) {
+        guard maxScroll > 0, fanTiles[tile.window.id] == nil else { return }
+        // Altta etiket satırı da görünsün.
+        let margin: CGFloat = 12, labelHeight = StageMetrics().labelHeight
+        let tileTop = tile.frame.minY - scrollOffset, tileBottom = tile.frame.maxY - scrollOffset + labelHeight
+        if tileBottom > viewport.maxY - margin {
+            setScroll(scrollOffset + tileBottom - (viewport.maxY - margin), animated: true)
+        } else if tileTop < viewport.minY + margin {
+            setScroll(scrollOffset - (viewport.minY + margin - tileTop), animated: true)
+        }
+    }
+
+    private func pageOffset(of tile: Tile) -> CGFloat {
+        fanTiles[tile.window.id] === tile ? 0 : scrollOffset
+    }
+
+    private func isVisible(_ tile: Tile) -> Bool {
+        viewport.intersects(tile.frame.offsetBy(dx: 0, dy: -scrollOffset))
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard maxScroll > 0, drag == nil, fanApp == nil, resultsLayer == nil else { return }
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 16
+        guard delta != 0 else { return }
+        clearHover()
+        setScroll(scrollOffset - delta)
+    }
+
+    /// Hücreler yeni yerine kayar; `build` katmanları son yerlerine kurmuştur.
+    private func animateSlotMoves(from previous: [String: CGRect]) {
+        guard !reduceMotion else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.28)
+        CATransaction.setAnimationTimingFunction(Self.flight)
+        for (id, layers) in slotLayers {
+            guard let old = previous[id], let new = slotFrames[id], old.origin != new.origin else { continue }
+            let slide = CABasicAnimation(keyPath: "transform.translation")
+            slide.fromValue = NSValue(size: CGSize(width: old.midX - new.midX, height: old.midY - new.midY))
+            slide.toValue = NSValue(size: .zero)
+            for layer in layers { layer.add(slide, forKey: "slide") }
+        }
+        CATransaction.commit()
     }
 
     // MARK: Masaüstü şeridi
@@ -486,8 +636,15 @@ final class SceneView: NSView {
         var color = NSColor(calibratedWhite: 1, alpha: 0.72)
         // Arama hep odaklı; izin eksikse boş kutu yerine izin uyarısı görünür, yazmak yine aramadır.
         let needsPermission = !content.screenRecordingGranted || !content.accessibilityGranted
-        if drag != nil {
-            message = tx("Tam ekran yapıp buraya yerleştirmek için bırak", "Drop to make it full screen here")
+        if let drag {
+            switch (drag.slot != nil, canDropOnStrip(drag)) {
+            case (true, true):
+                message = tx("Sıralamak için hücrelerin arasına, tam ekran için şeride bırak", "Drop between cells to reorder, on the strip for full screen")
+            case (true, false):
+                message = tx("Sıralamak için hücrelerin arasına bırak", "Drop between cells to reorder")
+            default:
+                message = tx("Tam ekran yapıp buraya yerleştirmek için bırak", "Drop to make it full screen here")
+            }
             color = .white
         } else if !query.isEmpty {
             message = query
@@ -575,16 +732,19 @@ final class SceneView: NSView {
         let others = content.snapshot.otherApps(pinned: content.arrangement.pinned)
         guard !others.isEmpty else { return }
 
-        let title = text(tx("DİĞER AÇIK UYGULAMALAR", "OTHER OPEN APPS"), font: .systemFont(ofSize: 10.5, weight: .semibold),
+        let heading = content.showsOtherAppWindows
+            ? tx("DİĞER AÇIK UYGULAMALAR · PENCERELER İÇİN KAYDIRIN", "OTHER OPEN APPS · SCROLL FOR WINDOWS")
+            : tx("DİĞER AÇIK UYGULAMALAR", "OTHER OPEN APPS")
+        let title = text(heading, font: .systemFont(ofSize: 10.5, weight: .semibold),
                          color: NSColor(calibratedWhite: 1, alpha: 0.82), kern: 0.7)
         let size = title.preferredFrameSize()
         title.frame = CGRect(x: x, y: y - size.height / 2, width: size.width, height: size.height)
-        chrome.addSublayer(title)
+        pageChrome.addSublayer(title)
 
         let line = plainLayer()
         line.frame = CGRect(x: x + size.width + 12, y: y, width: width - size.width - 12, height: 0.5)
         line.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.25).cgColor
-        chrome.addSublayer(line)
+        pageChrome.addSublayer(line)
     }
 
     private func buildChips(_ apps: [SceneApp], y: CGFloat, height: CGFloat, x: CGFloat, width: CGFloat) {
@@ -624,9 +784,9 @@ final class SceneView: NSView {
                 label.frame = CGRect(x: 5 + iconSize + 6, y: (height - size.height) / 2, width: size.width, height: size.height)
                 chip.addSublayer(label)
             }
-            chrome.addSublayer(chip)
+            pageChrome.addSublayer(chip)
             chipLayers[app.id] = chip
-            hits.append(Hit(rect: rect, target: .chip(app.id)))
+            pageHits.append(Hit(rect: rect, target: .chip(app.id)))
             cursor += chipWidths[index] + gap
         }
     }
@@ -645,7 +805,7 @@ final class SceneView: NSView {
             tileHost.addSublayer(tile.root)
             tiles[window.id] = tile
             slotLayers[app.id, default: []].append(tile.root)
-            hits.append(Hit(rect: frame, target: .window(window.id)))
+            pageHits.append(Hit(rect: frame, target: .window(window.id)))
         }
 
         let hidden = app.windows.count - visible.count
@@ -665,7 +825,7 @@ final class SceneView: NSView {
             pill.zPosition = z + 500
             tileHost.addSublayer(pill)
             slotLayers[app.id, default: []].append(pill)
-            hits.append(Hit(rect: rect, target: .overflow(app.id)))
+            pageHits.append(Hit(rect: rect, target: .overflow(app.id)))
         }
         z += 1
     }
@@ -691,9 +851,9 @@ final class SceneView: NSView {
         icon.opacity = 0.6
         dashed.addSublayer(icon)
 
-        chrome.addSublayer(dashed)
+        pageChrome.addSublayer(dashed)
         slotLayers[app.id, default: []].append(dashed)
-        hits.append(Hit(rect: rect, target: .app(app.id)))
+        pageHits.append(Hit(rect: rect, target: .app(app.id)))
     }
 
     private func buildLabel(_ app: SceneApp, slot: PlacedSlot) {
@@ -716,10 +876,10 @@ final class SceneView: NSView {
         let icon = iconLayer(app.icon, size: iconSize)
         icon.frame = CGRect(x: x, y: centerY - iconSize / 2, width: iconSize, height: iconSize)
         icon.opacity = app.windows.isEmpty ? 0.7 : 1
-        chrome.addSublayer(icon)
+        pageChrome.addSublayer(icon)
 
         label.frame = CGRect(x: x + iconSize + 6, y: centerY - size.height / 2, width: textWidth, height: size.height)
-        chrome.addSublayer(label)
+        pageChrome.addSublayer(label)
 
         slotLayers[app.id, default: []].append(contentsOf: [icon, label])
     }
@@ -926,7 +1086,7 @@ final class SceneView: NSView {
     }
 
     private func flightTransform(for tile: Tile, to rect: CGRect) -> CATransform3D {
-        var transform = CATransform3DMakeTranslation(rect.midX - tile.frame.midX, rect.midY - tile.frame.midY, 0)
+        var transform = CATransform3DMakeTranslation(rect.midX - tile.frame.midX, rect.midY - (tile.frame.midY - scrollOffset), 0)
         transform = CATransform3DScale(transform, rect.width / tile.frame.width, rect.height / tile.frame.height, 1)
         return transform
     }
@@ -938,16 +1098,16 @@ final class SceneView: NSView {
         CATransaction.setAnimationDuration(duration)
         CATransaction.setAnimationTimingFunction(Self.flight)
 
-        for host in [backdrop, dim, chrome] {
+        for host in [backdrop, dim, chrome, pageChrome] {
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0
             fade.toValue = 1
-            fade.duration = host === chrome ? duration : min(duration, 0.2)
+            fade.duration = host === backdrop || host === dim ? min(duration, 0.2) : duration
             host.add(fade, forKey: "fade")
         }
 
         for tile in tiles.values {
-            if !reduceMotion, let rect = realRect(tile.window) {
+            if !reduceMotion, isVisible(tile), let rect = realRect(tile.window) {
                 let fly = CABasicAnimation(keyPath: "transform")
                 fly.fromValue = flightTransform(for: tile, to: rect)
                 fly.toValue = CATransform3DIdentity
@@ -990,12 +1150,13 @@ final class SceneView: NSView {
         }
         let duration: CFTimeInterval = reduceMotion ? 0.12 : 0.24
 
+        prepareForDismissal(focus: focus)
         CATransaction.begin()
         CATransaction.setAnimationDuration(duration)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
         CATransaction.setCompletionBlock(completion)
 
-        for host in [backdrop, dim, chrome] {
+        for host in [backdrop, dim, chrome, pageChrome] {
             add(opacityFrom: 1, to: 0, on: host)
         }
         for tile in tiles.values {
@@ -1023,6 +1184,25 @@ final class SceneView: NSView {
         CATransaction.commit()
     }
 
+    /// Görünmeyen önizlemeler uçmaz. Kaydırılmışken pencereler kırpmadan çıkıp yerlerine uçar;
+    /// yukarıda kalan etiketler de şeridin üstünde görünmesin diye gizlenir.
+    private func prepareForDismissal(focus: CGWindowID?) {
+        guard maxScroll > 0 else { return }
+        withoutActions {
+            for tile in tiles.values where !isVisible(tile) && tile.window.id != focus {
+                tile.root.isHidden = true
+            }
+            let roots = Set(tiles.values.map { ObjectIdentifier($0.root) })
+            for layer in tileHost.sublayers ?? [] where !roots.contains(ObjectIdentifier(layer)) {
+                layer.isHidden = !viewport.intersects(layer.frame.offsetBy(dx: 0, dy: -scrollOffset))
+            }
+            if scrollOffset > 0 {
+                pageChrome.isHidden = true
+                page.masksToBounds = false
+            }
+        }
+    }
+
     private func add(opacityFrom from: Float, to value: Float, on layer: CALayer) {
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = from
@@ -1045,10 +1225,11 @@ final class SceneView: NSView {
     /// Yoksa çakışan yığınlarda arkadaki pencere seçimi kapar, düğmelere de ulaşılamaz.
     private func targetOnHoveredTile(at point: CGPoint) -> Target? {
         guard let id = windowID(of: hovered), let tile = tile(for: id) else { return nil }
+        guard fanTiles[id] != nil || viewport.contains(point) else { return nil }
         let scaled = 1.05
         let local = CGPoint(
             x: (point.x - tile.frame.midX) / scaled + tile.frame.width / 2,
-            y: (point.y - tile.frame.midY) / scaled + tile.frame.height / 2
+            y: (point.y - (tile.frame.midY - pageOffset(of: tile))) / scaled + tile.frame.height / 2
         )
         guard CGRect(origin: .zero, size: tile.frame.size).contains(local) else { return nil }
         if let button = tile.buttons.first(where: { $0.rect.contains(local) }) {
@@ -1066,7 +1247,10 @@ final class SceneView: NSView {
         }
         if let target = targetOnHoveredTile(at: point) { return target }
         // Sonradan eklenen öndedir; pencereler yığın sırasıyla eklenir.
-        return hits.last { $0.rect.contains(point) }?.target
+        if let fixed = hits.last(where: { $0.rect.contains(point) }) { return fixed.target }
+        guard viewport.contains(point) else { return nil }
+        let local = CGPoint(x: point.x, y: point.y + scrollOffset)
+        return pageHits.last { $0.rect.contains(local) }?.target
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -1182,7 +1366,7 @@ final class SceneView: NSView {
         let size = label.preferredFrameSize()
         let width = min(size.width + 22, 420)
         let height: CGFloat = 26
-        let source = tile.frame
+        let source = tile.frame.offsetBy(dx: 0, dy: -pageOffset(of: tile))
         var x = source.midX - width / 2
         x = min(max(x, 12), bounds.width - width - 12)
         let y = max(source.minY - height - 8, 8)
@@ -1208,12 +1392,18 @@ final class SceneView: NSView {
         if drag == nil {
             // Küçük kaymalar tıklama sayılır.
             guard let pressed, hypot(point.x - pressed.point.x, point.y - pressed.point.y) > 6 else { return }
+            let slot = pinnedSlot(at: pressed.point)
             switch pressed.target {
             case .window(let id)?:
                 // Tam ekran alanların sırası değiştirilemez: macOS bunu yalnızca kendi Mission
-                // Control'ünde yapıyor, taklit etmek onu ekranda açıp sürüklemek demekti.
-                guard let tile = tile(for: id), !isReorder(tile.window) else { return }
-                beginDrag(tile, at: point)
+                // Control'ünde yapıyor, taklit etmek onu ekranda açıp sürüklemek demekti. Tam ekran
+                // pencere de yine hücresiyle birlikte sıralanabilir.
+                guard let tile = tile(for: id), slot != nil || !isReorder(tile.window) else { return }
+                beginDrag(tile, slot: slot, at: point)
+            case .app?, .overflow?, nil:
+                // Etiket, boş hücre ya da hücrenin boşluğu: yalnızca sıralama.
+                guard let slot else { return }
+                beginDrag(nil, slot: slot, at: point)
             default:
                 return
             }
@@ -1243,11 +1433,28 @@ final class SceneView: NSView {
         return content?.snapshot.spaces.first { $0.id == spaceID }?.isFullScreen ?? false
     }
 
-    private func beginDrag(_ tile: Tile, at point: CGPoint) {
+    /// Sıralanabilecek sabit hücre. Arama ya da panel açıkken sıralama olmaz.
+    private func pinnedSlot(at point: CGPoint) -> String? {
+        guard fanApp == nil, query.isEmpty, pinnedSlots.count > 1, viewport.contains(point) else { return nil }
+        let local = CGPoint(x: point.x, y: point.y + scrollOffset)
+        return pinnedSlots.first { $0.frame.contains(local) }?.id
+    }
+
+    private func canDropOnStrip(_ drag: Drag) -> Bool {
+        guard let window = drag.tile?.window else { return false }
+        return !isReorder(window)
+    }
+
+    private func beginDrag(_ tile: Tile?, slot: String?, at point: CGPoint) {
         clearHover()
         // Küçük ve imlecin altında: bırakılacak aralığı örtmesin.
-        let width = min(tile.frame.width, 150)
-        let size = CGSize(width: width, height: width / max(tile.window.aspect, 0.2))
+        let size: CGSize
+        if let tile {
+            let width = min(tile.frame.width, 150)
+            size = CGSize(width: width, height: width / max(tile.window.aspect, 0.2))
+        } else {
+            size = CGSize(width: 72, height: 72)
+        }
 
         withoutActions {
             let ghost = plainLayer()
@@ -1266,10 +1473,10 @@ final class SceneView: NSView {
             image.cornerRadius = 8
             image.masksToBounds = true
             image.contentsGravity = .resize
-            image.backgroundColor = NSColor(calibratedWhite: 0.9, alpha: 1).cgColor
-            if let contents = tile.image.contents {
+            image.backgroundColor = tile == nil ? nil : NSColor(calibratedWhite: 0.9, alpha: 1).cgColor
+            if let contents = tile?.image.contents {
                 image.contents = contents
-            } else if let app = content?.snapshot.app(tile.window.appID) {
+            } else if let app = content?.snapshot.app(tile?.window.appID ?? slot ?? "") {
                 // Görüntü yoksa sürüklenen şey uygulama simgesidir.
                 var rect = CGRect(x: 0, y: 0, width: 96 * scale, height: 96 * scale)
                 image.contents = app.icon.cgImage(forProposedRect: &rect, context: nil, hints: nil)
@@ -1278,8 +1485,11 @@ final class SceneView: NSView {
             ghost.addSublayer(image)
             top.addSublayer(ghost)
 
-            tile.root.opacity = 0.3
-            drag = Drag(tile: tile, ghost: ghost, gap: nil)
+            // Sıralanırken hücrenin tamamı soluklaşır, bırakılınca eski değerlerine döner.
+            let layers = slot.flatMap { slotLayers[$0] } ?? tile.map { [$0.root] } ?? []
+            let faded = layers.map { (layer: $0, opacity: $0.opacity) }
+            for layer in layers { layer.opacity = 0.3 }
+            drag = Drag(tile: tile, ghost: ghost, gap: nil, slot: slot, faded: faded)
             renderHint()
         }
     }
@@ -1290,13 +1500,29 @@ final class SceneView: NSView {
 
     private func updateDrag(at point: CGPoint) {
         guard var current = drag else { return }
-        let gap = dropGap(at: point, moving: movingSpace(of: current))
+        let gap = stripGap(at: point, for: current)
+        let slotDrop = gap == nil ? slotDrop(at: point, for: current) : nil
         withoutActions {
             current.ghost.position = ghostPosition(at: point, size: current.ghost.bounds.size)
-            if gap != current.gap { showInsertionMark(gap) }
+            if gap != current.gap || slotDrop != current.slotDrop {
+                showInsertionMark(gap)
+                if let slotDrop { showSlotMark(slotDrop) }
+            }
         }
         current.gap = gap
+        current.slotDrop = slotDrop
         drag = current
+    }
+
+    private func stripGap(at point: CGPoint, for drag: Drag) -> Int? {
+        canDropOnStrip(drag) ? dropGap(at: point, moving: movingSpace(of: drag)) : nil
+    }
+
+    private func slotDrop(at point: CGPoint, for drag: Drag) -> SlotDrop? {
+        guard let slot = drag.slot, viewport.contains(point) else { return nil }
+        let local = CGPoint(x: point.x, y: point.y + scrollOffset)
+        guard pinnedArea.insetBy(dx: -24, dy: -8).contains(local) else { return nil }
+        return StageLayout.drop(at: local, moving: slot, in: pinnedSlots)
     }
 
     /// Yeri değişecek mevcut alan; masaüstü penceresi sürüklenirken yeni alan açılacağı için nil.
@@ -1329,8 +1555,19 @@ final class SceneView: NSView {
         guard let gap, let x = SpaceOrder.dropX(gap: gap, frames: spaceRects.map(\.rect), margin: 8),
               let first = spaceRects.first?.rect
         else { return }
+        addInsertionMark(CGRect(x: x - 2, y: first.minY - 3, width: 4, height: first.height + 6))
+    }
+
+    private func showSlotMark(_ drop: SlotDrop) {
+        insertionMark?.removeFromSuperlayer()
+        addInsertionMark(CGRect(
+            x: drop.markX - 2, y: drop.markMinY - scrollOffset, width: 4, height: drop.markMaxY - drop.markMinY
+        ))
+    }
+
+    private func addInsertionMark(_ frame: CGRect) {
         let mark = plainLayer()
-        mark.frame = CGRect(x: x - 2, y: first.minY - 3, width: 4, height: first.height + 6)
+        mark.frame = frame
         mark.cornerRadius = 2
         mark.backgroundColor = NSColor.controlAccentColor.cgColor
         mark.shadowColor = NSColor.controlAccentColor.cgColor
@@ -1344,14 +1581,18 @@ final class SceneView: NSView {
 
     private func finishDrag(at point: CGPoint) {
         guard let finished = drag else { return }
-        let gap = dropGap(at: point, moving: movingSpace(of: finished))
+        let gap = stripGap(at: point, for: finished)
+        let slotDrop = gap == nil ? slotDrop(at: point, for: finished) : nil
         withoutActions {
             finished.ghost.removeFromSuperlayer()
-            finished.tile?.root.opacity = 1
+            for entry in finished.faded { entry.layer.opacity = entry.opacity }
             insertionMark?.removeFromSuperlayer()
             insertionMark = nil
             drag = nil
             renderHint()
+        }
+        if let slot = finished.slot, let slotDrop {
+            delegate?.scene { $0.move(slot, toGap: slotDrop.gap) }
         }
         guard let gap else { return }
         let before = gap < spaceRects.count ? spaceRects[gap].id : nil
@@ -1439,9 +1680,12 @@ final class SceneView: NSView {
         let maxHeight = content.usable.height - 40
         let height = min(CGFloat(rows) * cellHeight + CGFloat(rows - 1) * gap + 2 * padding, maxHeight)
 
-        let anchor = chipLayers[id]?.frame ?? slotFrames[id] ?? bounds
+        // Çip kaydırılıp gittiyse panel uygulamanın hücresinden açılır.
+        let chip = chipLayers[id]?.frame.offsetBy(dx: 0, dy: -scrollOffset)
+        let visibleChip = chip.flatMap { viewport.intersects($0) ? $0 : nil }
+        let anchor = visibleChip ?? slotFrames[id]?.offsetBy(dx: 0, dy: -scrollOffset) ?? bounds
         let x = min(max(anchor.midX - width / 2, content.usable.minX + 12), content.usable.maxX - width - 12)
-        let preferredY = chipLayers[id] != nil ? anchor.minY - height - 12 : anchor.midY - height / 2
+        let preferredY = visibleChip != nil ? anchor.minY - height - 12 : anchor.midY - height / 2
         let y = min(max(preferredY, content.usable.minY + 12), content.usable.maxY - height - 12)
         let panelRect = CGRect(x: x, y: y, width: width, height: height)
 
@@ -1598,7 +1842,7 @@ final class SceneView: NSView {
         guard let current else {
             let start = query.isEmpty ? nil : firstMatch().flatMap { match in pool.first { $0.window.id == match.id } }
             let first = start ?? pool.min { ($0.frame.minY, $0.frame.minX) < ($1.frame.minY, $1.frame.minX) }
-            if let first { setHover(.window(first.window.id)) }
+            if let first { select(first) }
             return
         }
         let from = CGPoint(x: current.frame.midX, y: current.frame.midY)
@@ -1615,7 +1859,12 @@ final class SceneView: NSView {
             guard along > 8 else { return nil }
             return (tile, along + abs(across) * 2)
         }.min { $0.1 < $1.1 }?.0
-        if let best { setHover(.window(best.window.id)) }
+        if let best { select(best) }
+    }
+
+    private func select(_ tile: Tile) {
+        scrollIntoView(tile)
+        setHover(.window(tile.window.id))
     }
 
     #if DEBUG
@@ -1632,6 +1881,8 @@ final class SceneView: NSView {
             applyQuery()
             renderResults()
         }
+        // En iyi eşleşme aşağıda kaldıysa ↩'un nereye gideceği görünsün.
+        if !query.isEmpty, let best = firstMatch(), let tile = tiles[best.id] { scrollIntoView(tile) }
     }
 
     /// Yazınca arama kutusu, macOS'un Uygulamalar görünümü gibi tek bir panele dönüşür: üstte arama
@@ -1809,7 +2060,9 @@ final class SceneView: NSView {
 
     private func appID(at point: CGPoint) -> String? {
         if case .chip(let id)? = target(at: point) { return id }
-        return slotFrames.first { $0.value.contains(point) }?.key
+        guard viewport.contains(point) else { return nil }
+        let local = CGPoint(x: point.x, y: point.y + scrollOffset)
+        return slotFrames.first { $0.value.contains(local) }?.key
     }
 
     private func item(_ title: String, action: Selector, id: String, enabled: Bool = true) -> NSMenuItem {

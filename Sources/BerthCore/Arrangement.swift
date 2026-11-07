@@ -12,6 +12,12 @@ public struct Arrangement: Codable, Equatable, Sendable {
 
     public func size(of id: String) -> SlotSize { sizes[id] ?? .small }
 
+    /// Sabit olmayan uygulamanın hücre boyutu: daha önce sabitlendiyse saklı boyutu, yoksa pencere
+    /// sayısından gelir. Boyut saklanmaz, çünkü sabit olmayan uygulamanın sabit bir yeri de yok.
+    public func unpinnedSize(of id: String, windowCount: Int) -> SlotSize {
+        sizes[id] ?? .initial(windowCount: windowCount)
+    }
+
     public var specs: [SlotSpec] {
         pinned.map { SlotSpec(id: $0, size: size(of: $0)) }
     }
@@ -41,6 +47,15 @@ public struct Arrangement: Codable, Equatable, Sendable {
         guard target != index else { return }
         pinned.remove(at: index)
         pinned.insert(id, at: target)
+    }
+
+    /// Uygulamayı iki hücrenin arasına taşır. `gap`, taşımadan önceki sıraya göredir: 0 en baş,
+    /// `pinned.count` en son.
+    public mutating func move(_ id: String, toGap gap: Int) {
+        guard let index = pinned.firstIndex(of: id) else { return }
+        let bounded = min(max(gap, 0), pinned.count)
+        pinned.remove(at: index)
+        pinned.insert(id, at: bounded > index ? bounded - 1 : bounded)
     }
 }
 

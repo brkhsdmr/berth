@@ -27,6 +27,16 @@ Ekran Kaydı (önizleme, başlık) ve Erişilebilirlik (pencereye geçiş) izni 
 - Hücre boyutu ilk görüldüğünde pencere sayısından seçilir, sonra yalnızca kullanıcı değiştirir.
 - Yığındaki pencere sırası açılış sırasıdır; kullanım sırayı değiştirmez.
 
+## Sahnede kaydırma ve sıralama
+
+Ayarlar > Genel > Sahne açıkken (varsayılan kapalı) sabit olmayan uygulamalar ilk görünümün altında kendi hücreleriyle listelenir. İlk görünüm ayar kapalıykenkiyle aynıdır, çipler de yerinde kalır.
+
+- **Katmanlar.** `chrome` kaymaz (şerit, arama). `page` kırpan katmandır; `pageChrome` ve `tileHost` onun içinde görünüm uzayında kurulur, kaydırma yalnızca `page.bounds.origin` değiştirir. Bu yüzden hedefler de ikiye ayrıldı: `hits` görünüm uzayında, `pageHits` sayfa uzayında.
+- **Üst kırpma yalnızca kaydırılmışken.** Sahne açılırken pencereler gerçek yerlerinden uçar; üst kenar baştan kırpılsa şeridin hizasında kesilirlerdi. Görünmeyen önizlemeler uçmaz, solarak gelir.
+- **Yerleşim.** Bu bölüm `StageLayout.placeFlowing` ile kurulur: yukarıdan başlar, 12 hücrede bir uzar, böylece uygulama çoğaldıkça hücreler ekrana sığmak için küçülmez. Sabit olmayan uygulamanın yeri ada göre değişebilir; "yeri sabit" kuralı yalnızca sabitlenenler için geçerlidir.
+
+Sabit hücre herhangi bir yerinden (önizleme, etiket, boş kısım) sürüklenir. Bırakılan yer belirler: hücrelerin arası sırayı değiştirir, önizleme için şerit eskisi gibi tam ekrana alır. Tam ekran pencere şeride bırakılamaz ama hücresiyle sıralanabilir. Arama ya da pencere paneli açıkken sıralama yoktur.
+
 ## Pencereyi tam ekranlar arasına yerleştirme
 
 Önizleme üstteki şeride sürüklenip iki alanın arasına bırakılır. Pencere tam ekrana geçer, sonra yeni alan bırakılan yere taşınır. Tam ekran alanların sırası buradan değiştirilemez: bunu macOS yalnızca kendi Mission Control'ünde yapıyor, o yüzden tam ekran pencereler ve şeritteki küçük resimler sürüklenmez.

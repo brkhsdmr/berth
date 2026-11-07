@@ -23,6 +23,7 @@ final class AppSettings: ObservableObject {
         static let fullScreenDock = "fullScreenDockEnabled"
         static let keepDockOpen = "keepDockOpenDuringPreview"
         static let windowPreviews = "windowPreviewsEnabled"
+        static let otherAppsScroll = "otherAppsScrollEnabled"
         static let trackpadGesture = "trackpadGestureEnabled"
         static let trackpadFingers = "trackpadFingers"
         static let hotCorner = "hotCorner"
@@ -46,6 +47,11 @@ final class AppSettings: ObservableObject {
             UserDefaults.standard.set(windowPreviewsEnabled, forKey: Key.windowPreviews)
             onWindowPreviewsChange?(windowPreviewsEnabled)
         }
+    }
+
+    /// Sahnede aşağı kaydırınca sabit olmayan uygulamaların pencereleri kendi hücrelerinde görünür.
+    @Published var otherAppsScrollEnabled: Bool {
+        didSet { UserDefaults.standard.set(otherAppsScrollEnabled, forKey: Key.otherAppsScroll) }
     }
 
     /// Sahneyi açan yukarı kaydırmanın parmak sayısı; 0 kapalı.
@@ -143,6 +149,7 @@ final class AppSettings: ObservableObject {
         dockPreviewsEnabled = defaults.object(forKey: Key.dockPreviews) as? Bool ?? true
         fullScreenDockEnabled = defaults.object(forKey: Key.fullScreenDock) as? Bool ?? true
         keepDockOpenDuringPreview = defaults.object(forKey: Key.keepDockOpen) as? Bool ?? true
+        otherAppsScrollEnabled = defaults.object(forKey: Key.otherAppsScroll) as? Bool ?? false
         // Eski açık/kapalı ayarı: kapalıysa kapalı kalır.
         if let saved = defaults.object(forKey: Key.trackpadFingers) as? Int {
             trackpadFingers = saved
@@ -639,6 +646,12 @@ private struct UsageTab: View {
                     .foregroundStyle(.secondary)
             } header: {
                 Text(tx("Pencere önizlemeleri", "Window previews"))
+            }
+            Section(tx("Sahne", "Scene")) {
+                Toggle(tx("Aşağı kaydırınca diğer uygulamaların pencerelerini göster", "Show other apps' windows when scrolling down"), isOn: $settings.otherAppsScrollEnabled)
+                Text(tx("Sabit olmayan uygulamalar sahnenin altında kendi hücreleri ve önizlemeleriyle listelenir. Kapalıyken yalnızca alt sıradaki çipler görünür.", "Apps you haven't pinned are listed below the scene with their own cells and previews. When off, only the row of chips at the bottom is shown."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             Section("Dock") {
                 Toggle(tx("Dock simgesinin üstüne gelince pencereleri göster", "Show windows when hovering a Dock icon"), isOn: $settings.dockPreviewsEnabled)

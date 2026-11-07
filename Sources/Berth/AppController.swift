@@ -409,6 +409,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             backingScale: screen.backingScaleFactor,
             wallpaper: wallpapers.entry(for: screen),
             previewsAvailable: previewsAvailable,
+            showsOtherAppWindows: settings.otherAppsScrollEnabled,
             screenRecordingGranted: !settings.windowPreviewsEnabled || Permissions.screenRecording,
             accessibilityGranted: Permissions.accessibility
         ))

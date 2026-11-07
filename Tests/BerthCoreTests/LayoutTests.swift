@@ -116,6 +116,79 @@ final class PileLayoutTests: XCTestCase {
     }
 }
 
+final class FlowingLayoutTests: XCTestCase {
+    private func slots(_ count: Int) -> [SlotSpec] {
+        (0..<count).map { SlotSpec(id: "app\($0)", size: .small) }
+    }
+
+    func testStartsAtTopAndKeepsOrder() {
+        let placed = StageLayout.placeFlowing(slots(5), x: 40, width: 1600, top: 1000, viewportHeight: 800)
+        XCTAssertEqual(placed.map(\.id), slots(5).map(\.id))
+        XCTAssertEqual(placed.first?.frame.minY, 1000)
+        XCTAssertTrue(placed.allSatisfy { $0.pile.minY == $0.frame.minY })
+    }
+
+    func testManyAppsMakeSectionLongerNotCellsTiny() {
+        let few = StageLayout.placeFlowing(slots(12), x: 0, width: 1600, top: 0, viewportHeight: 800)
+        let many = StageLayout.placeFlowing(slots(48), x: 0, width: 1600, top: 0, viewportHeight: 800)
+        XCTAssertEqual(many.count, 48)
+        XCTAssertGreaterThan(many.map(\.frame.maxY).max()!, 800)
+        XCTAssertGreaterThan(many[0].frame.width, few[0].frame.width * 0.6)
+    }
+
+    func testEmptyInput() {
+        XCTAssertTrue(StageLayout.placeFlowing([], x: 0, width: 1600, top: 0, viewportHeight: 800).isEmpty)
+    }
+}
+
+final class SlotDropTests: XCTestCase {
+    /// İki satır: a b c / d e
+    private let slots: [PlacedSlot] = {
+        func slot(_ id: String, _ x: CGFloat, _ y: CGFloat) -> PlacedSlot {
+            let frame = CGRect(x: x, y: y, width: 100, height: 100)
+            return PlacedSlot(id: id, size: .small, frame: frame, pile: frame)
+        }
+        return [slot("a", 0, 0), slot("b", 120, 0), slot("c", 240, 0), slot("d", 0, 120), slot("e", 120, 120)]
+    }()
+
+    func testDropBetweenTwoCells() {
+        XCTAssertEqual(StageLayout.drop(at: CGPoint(x: 200, y: 50), moving: "e", in: slots)?.gap, 2)
+    }
+
+    func testOwnSidesAreNotADrop() {
+        XCTAssertNil(StageLayout.drop(at: CGPoint(x: 110, y: 50), moving: "b", in: slots))
+        XCTAssertNil(StageLayout.drop(at: CGPoint(x: 200, y: 50), moving: "b", in: slots))
+    }
+
+    func testRowEndMarksAfterLastCell() {
+        let drop = StageLayout.drop(at: CGPoint(x: 400, y: 50), moving: "a", in: slots)
+        XCTAssertEqual(drop?.gap, 3)
+        XCTAssertEqual(drop?.markX, 350)
+    }
+
+    func testNearestRowWinsOutsideCells() {
+        XCTAssertEqual(StageLayout.drop(at: CGPoint(x: 10, y: 300), moving: "a", in: slots)?.gap, 3)
+    }
+
+    func testUnknownAppIsNotADrop() {
+        XCTAssertNil(StageLayout.drop(at: .zero, moving: "z", in: slots))
+    }
+
+    func testGapMatchesArrangementMove() {
+        var forward = Arrangement(pinned: ["a", "b", "c", "d", "e"])
+        forward.move("a", toGap: 3)
+        XCTAssertEqual(forward.pinned, ["b", "c", "a", "d", "e"])
+
+        var backward = Arrangement(pinned: ["a", "b", "c", "d", "e"])
+        backward.move("e", toGap: 2)
+        XCTAssertEqual(backward.pinned, ["a", "b", "e", "c", "d"])
+
+        var last = Arrangement(pinned: ["a", "b", "c"])
+        last.move("a", toGap: 3)
+        XCTAssertEqual(last.pinned, ["b", "c", "a"])
+    }
+}
+
 final class ArrangementTests: XCTestCase {
     func testInitialSizeFromWindowCount() {
         XCTAssertEqual(SlotSize.initial(windowCount: 0), .small)
