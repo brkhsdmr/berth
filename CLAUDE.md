@@ -47,16 +47,16 @@ Yalnızca debug derlemesinde. macOS'ta `DistributedNotificationCenter` bildiriml
 | `dockPreview` | bundle id (boş: kapat) | o Dock simgesinin önizlemesini aç ve açık tut |
 | `remoteToggle`, `layoutCapture`, `snapTest` | | köprü ve düzen sınamaları |
 
-Ekran görüntüsü modu (debug): `defaults write io.github.brkhsdmr.berth mosaicPreviews -bool YES` önizlemeleri pikselleştirir ve pencere başlıklarını gizler; `demoApps` sahneyi verilen uygulamalarla sınırlar. Bitince `defaults delete … mosaicPreviews` ve release derlemesini yeniden kur.
+Ekran görüntüsü modu (debug): `defaults write io.github.brkhsdmr.berth skeletonPreviews -bool YES` pencere görüntüleri yerine iskelet çizer ve pencere başlıklarını gizler; `demoApps` sahneyi verilen uygulamalarla sınırlar. Bitince `defaults delete … skeletonPreviews` ve release derlemesini yeniden kur.
 
-Windows'ta debug derlemede `%APPDATA%\Berth\mosaic.on` dosyası varsa sahne önizlemeleri pikselleşir, başlık yerine uygulama adı görünür (`windows/src/app/demo.h`). Görev çubuğu önizlemesi bu moda dahil değil.
+Windows'ta debug derlemede `%APPDATA%\Berth\skeleton.on` dosyası varsa sahne önizlemeleri iskelet olur, başlık yerine uygulama adı görünür (`windows/src/app/demo.h`). Görev çubuğu önizlemesi bu moda dahil değil.
 
 Günlük: `~/Library/Logs/Berth/dock.log`. Windows'ta `%APPDATA%\Berth\trace.on` dosyası varsa sahne yerleşimi `layout.txt`'ye yazılır (T: önizleme, D: masaüstü, N: yeni masaüstü, H: arama kutusu, A: köşe düğmeleri).
 
 ## Ekran görüntüleri (docs/images)
 
 Gerçek kullanımdan alınır, kişisel içerik görünmez:
-- Pencere içerikleri kaba bloklarla pikselleştirilir (önizleme genişliğine ~25 blok). Kısa metinler (makine adı, kod) pikselleştirilmez, düz kutuyla kapatılır: küçük bloklu kısa metin geri çözülebilir.
+- Pencere içerikleri iskelet modundan gelir: gerçek görüntü kullanılmaz, başlıklar uygulama adına iner. Kişisel içerik taşıyan başka bir alan (makine adı, kod) düz kutuyla kapatılır.
 - Yarı saydam yüzeylerin (arama paneli, rozetler) arkasında kalan içeriğe dikkat; gerekirse sorgu ya da konum değiştirilerek çakışma önlenir.
 - Ham görüntüler depoya girmez; yayından önce görüntüler kullanıcıya gösterilip onay alınır.
 

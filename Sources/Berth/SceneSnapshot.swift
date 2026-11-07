@@ -81,27 +81,82 @@ struct SceneSnapshot {
 /// demoApps -array com.apple.Safari …` verilince sahne yalnızca bu uygulamaları gösterir; diğer
 /// pencereler ve yalnızca onların bulunduğu tam ekran alanlar görünmez. Silince mod kapanır.
 enum DemoMode {
-    /// `defaults write io.github.brkhsdmr.berth mosaicPreviews -bool YES`: pencere önizlemeleri
-    /// pikselleşir, tam ekran alanlar pencere başlığı yerine uygulama adıyla anılır. Gerçek
-    /// kullanımın ekran görüntüsü, içerik okunmadan.
-    static var mosaic: Bool { UserDefaults.standard.bool(forKey: "mosaicPreviews") }
+    /// `defaults write io.github.brkhsdmr.berth skeletonPreviews -bool YES`: pencere görüntüleri
+    /// yerine iskelet çizilir, tam ekran alanlar pencere başlığı yerine uygulama adıyla anılır.
+    /// Gerçek kullanımın ekran görüntüsü, içerik hiç kullanılmadan.
+    static var skeleton: Bool { UserDefaults.standard.bool(forKey: "skeletonPreviews") }
 
-    /// Görüntüyü iri pikselli bir mozaiğe çevirir: önce küçültülür, sonra yumuşatmadan büyütülür.
-    static func mosaic(_ image: CGImage) -> CGImage {
-        let blocks = 26.0
-        let small = CGSize(width: blocks, height: max(1, (blocks * Double(image.height) / Double(max(image.width, 1))).rounded()))
-        let space = CGColorSpaceCreateDeviceRGB()
-        let info = CGImageAlphaInfo.premultipliedLast.rawValue
-        guard let tiny = CGContext(data: nil, width: Int(small.width), height: Int(small.height), bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else { return image }
-        tiny.interpolationQuality = .medium
-        tiny.draw(image, in: CGRect(origin: .zero, size: small))
-        guard let reduced = tiny.makeImage() else { return image }
-        let scale = 24.0
-        let big = CGSize(width: small.width * scale, height: small.height * scale)
-        guard let large = CGContext(data: nil, width: Int(big.width), height: Int(big.height), bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else { return image }
-        large.interpolationQuality = .none
-        large.draw(reduced, in: CGRect(origin: .zero, size: big))
-        return large.makeImage() ?? image
+    /// Pencerenin en-boy oranında iskelet: gerçek görüntüden yalnızca boyutu alınır. Üç düzen var,
+    /// aynı pencere hep aynısını alır. Windows'taki karşılığı `demo.h`; değişiklik ikisine de yapılır.
+    static func skeleton(for image: CGImage, seed: UInt32) -> CGImage {
+        let width = 960, ratio = Double(image.height) / Double(max(image.width, 1))
+        let height = max(1, Int(Double(width) * ratio))
+        let W = Double(width), H = Double(height)
+        guard let c = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1), blue = CGColor(red: 0.16, green: 0.33, blue: 0.96, alpha: 1)
+        let ink = CGColor(red: 0.2, green: 0.21, blue: 0.24, alpha: 1), soft = CGColor(red: 0.8, green: 0.81, blue: 0.84, alpha: 1)
+        let panel = CGColor(red: 0.95, green: 0.96, blue: 0.97, alpha: 1)
+        c.setFillColor(white)
+        c.fill(CGRect(x: 0, y: 0, width: W, height: H))
+        var state = seed &* 2654435761 | 1
+        func random() -> Double {
+            state = state &* 1664525 &+ 1013904223
+            return Double(state >> 16 & 0xFFFF) / 65535
+        }
+        let t = 8.0 // çizgi kalınlığı
+        func line(_ x: Double, _ y: Double, _ length: Double, _ color: CGColor) {
+            c.setFillColor(color)
+            c.addPath(CGPath(roundedRect: CGRect(x: x, y: H - y - t, width: length, height: t), cornerWidth: t / 2, cornerHeight: t / 2, transform: nil))
+            c.fillPath()
+        }
+        func dot(_ x: Double, _ y: Double) {
+            c.setFillColor(blue)
+            c.fillEllipse(in: CGRect(x: x, y: H - y - 34, width: 34, height: 34))
+        }
+        let pad = 60.0
+        switch seed % 3 {
+        case 0: // Sol başlık, üç sütun
+            dot(pad, pad)
+            line(pad, pad + 62, 130, blue)
+            line(pad, pad + 92, 90, ink)
+            var y = pad
+            while y < H - pad - 120 {
+                for x in [0.36, 0.58, 0.8] {
+                    line(W * x, y, 130, ink)
+                    for row in 1...3 { line(W * x, y + Double(row) * 34, 90 + random() * 50, soft) }
+                }
+                y += 190
+            }
+        case 1: // Belge
+            dot(pad, pad)
+            line(pad + 56, pad + 12, 260, ink)
+            var y = pad + 90, row = 0
+            while y < H - pad {
+                line(pad, y, row % 4 == 3 ? (W - 2 * pad) * (0.3 + random() * 0.3) : (W - 2 * pad) * (0.8 + random() * 0.2), soft)
+                y += row % 4 == 3 ? 72 : 36
+                row += 1
+            }
+        default: // Kenar çubuğu
+            c.setFillColor(panel)
+            c.fill(CGRect(x: 0, y: 0, width: W * 0.26, height: H))
+            dot(pad / 2 + 10, pad)
+            var y = pad + 70
+            while y < H - pad {
+                line(pad / 2 + 10, y, 70 + random() * 90, soft)
+                y += 44
+            }
+            line(W * 0.32, pad + 12, 240, ink)
+            y = pad + 76
+            while y < H - pad {
+                line(W * 0.32, y, 170, blue)
+                line(W * 0.32, y + 32, (W * 0.62) * (0.6 + random() * 0.4), soft)
+                line(W * 0.32, y + 64, (W * 0.62) * (0.4 + random() * 0.4), soft)
+                y += 136
+            }
+        }
+        return c.makeImage() ?? image
     }
 
     static var apps: [String]? {
@@ -113,7 +168,7 @@ enum DemoMode {
 extension SceneSnapshot {
     func demoFiltered() -> SceneSnapshot {
         var copy = self
-        if DemoMode.mosaic {
+        if DemoMode.skeleton {
             // Başlıklar da gizlenir: kartlarda "Uygulama · Pencere N" görünür.
             for key in copy.apps.keys {
                 for index in copy.apps[key]!.windows.indices { copy.apps[key]!.windows[index].title = "" }

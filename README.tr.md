@@ -6,7 +6,7 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 Ücretsiz ve açık kaynak (GPL-3.0). [English](README.md)
 
-![macOS'ta Berth: her uygulama kendi yerinde, canlı önizlemeler, üstte masaüstü şeridi (pencere içerikleri bu görüntü için pikselleştirildi)](docs/images/scene.jpg)
+![macOS'ta Berth: her uygulama kendi yerinde, canlı önizlemeler, üstte masaüstü şeridi (pencere içerikleri bu görüntü için yer tutucuyla değiştirildi)](docs/images/scene.jpg)
 
 ## Özellikler
 
@@ -53,7 +53,7 @@ Dock'taki bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki ve
 
 Windows 11'de aynı sahne: canlı DWM önizlemeleri, sanal masaüstü şeridi ve kurulu uygulamalar için simge ızgarası.
 
-![Windows 11'de Berth: sabit hücrelerde uygulamalar, açık olmayanlar boş yer olarak (pencere içerikleri bu görüntü için pikselleştirildi)](docs/images/windows-scene.jpg)
+![Windows 11'de Berth: sabit hücrelerde uygulamalar, açık olmayanlar boş yer olarak (pencere içerikleri bu görüntü için yer tutucuyla değiştirildi)](docs/images/windows-scene.jpg)
 
 ![“note” yazınca Not Defteri penceresi öne çıkar, adı uyan kurulu uygulamalar listelenir](docs/images/windows-search.jpg)
 

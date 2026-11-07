@@ -6,7 +6,7 @@ Mission Control and Task View rearrange everything each time you open them. Bert
 
 Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
-![Berth on macOS: every app in its own place with live previews, the desktop strip at the top (window contents pixelated for this screenshot)](docs/images/scene.jpg)
+![Berth on macOS: every app in its own place with live previews, the desktop strip at the top (window contents replaced with placeholders for this screenshot)](docs/images/scene.jpg)
 
 ## Features
 
@@ -53,7 +53,7 @@ Hover a Dock icon to see that app's windows on every desktop and full-screen spa
 
 The same scene on Windows 11, with live DWM thumbnails, the virtual desktop strip and an icon grid for installed apps.
 
-![Berth on Windows 11: pinned apps in fixed cells, apps that aren't running shown as empty places (window contents pixelated for this screenshot)](docs/images/windows-scene.jpg)
+![Berth on Windows 11: pinned apps in fixed cells, apps that aren't running shown as empty places (window contents replaced with placeholders for this screenshot)](docs/images/windows-scene.jpg)
 
 ![Typing "note" highlights the Notepad window and lists matching installed apps](docs/images/windows-search.jpg)
 

@@ -67,7 +67,7 @@ final class ThumbnailStore {
                     guard !Task.isCancelled else { return }
                     if var image, let self {
                         #if DEBUG
-                        if DemoMode.mosaic { image = DemoMode.mosaic(image) }
+                        if DemoMode.skeleton { image = DemoMode.skeleton(for: image, seed: id) }
                         #endif
                         self.images[id] = image
                         self.fromPrimary.insert(id)
@@ -83,7 +83,7 @@ final class ThumbnailStore {
             for id in failed where !self.fromPrimary.contains(id) {
                 if var image = SkyLight.captureWindow(id) {
                     #if DEBUG
-                    if DemoMode.mosaic { image = DemoMode.mosaic(image) }
+                    if DemoMode.skeleton { image = DemoMode.skeleton(for: image, seed: id) }
                     #endif
                     self.images[id] = image
                     self.onImage?(id, image)

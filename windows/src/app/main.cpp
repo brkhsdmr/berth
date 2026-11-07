@@ -298,8 +298,8 @@ private:
     /// Bulanıklaştırma her karede yapılmaz: kaydırma akıcı kalır.
     ComPtr<ID2D1Bitmap> blurredBackdrop_;
 #ifdef DEBUG
-    std::map<HWND, ComPtr<ID2D1Bitmap>> mosaics_;
-    ID2D1Bitmap* mosaicFor(ID2D1RenderTarget* rt, HWND hwnd);
+    std::map<HWND, ComPtr<ID2D1Bitmap>> skeletons_;
+    ID2D1Bitmap* skeletonFor(ID2D1RenderTarget* rt, HWND hwnd);
 #endif
     NOTIFYICONDATAW tray_{};
     TaskbarPreview preview_;
@@ -727,7 +727,7 @@ void App::close() {
     wallpaperBitmap_.Reset();
     blurredBackdrop_.Reset();
 #ifdef DEBUG
-    mosaics_.clear();
+    skeletons_.clear();
 #endif
     backTarget_.Reset();
     wallpaperSource_.Reset();
@@ -925,16 +925,16 @@ void App::reorderPin(size_t pin, size_t gap) {
 }
 
 #ifdef DEBUG
-ID2D1Bitmap* App::mosaicFor(ID2D1RenderTarget* rt, HWND hwnd) {
-    auto found = mosaics_.find(hwnd);
-    if (found != mosaics_.end()) return found->second.Get();
+ID2D1Bitmap* App::skeletonFor(ID2D1RenderTarget* rt, HWND hwnd) {
+    auto found = skeletons_.find(hwnd);
+    if (found != skeletons_.end()) return found->second.Get();
     ComPtr<ID2D1Bitmap> bitmap;
-    demo::Blocks blocks = demo::capture(hwnd);
-    if (blocks.width > 0) {
+    demo::Image image = demo::skeleton(hwnd);
+    if (image.width > 0) {
         D2D1_BITMAP_PROPERTIES props{D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96};
-        rt->CreateBitmap(D2D1::SizeU(blocks.width, blocks.height), blocks.pixels.data(), blocks.width * 4, props, bitmap.GetAddressOf());
+        rt->CreateBitmap(D2D1::SizeU(image.width, image.height), image.pixels.data(), image.width * 4, props, bitmap.GetAddressOf());
     }
-    mosaics_[hwnd] = bitmap;
+    skeletons_[hwnd] = bitmap;
     return bitmap.Get();
 }
 #endif
@@ -951,7 +951,7 @@ void App::clearStripThumbnails() {
 void App::registerThumbnails() {
     clearStripThumbnails();
 #ifdef DEBUG
-    if (demo::mosaic()) return;
+    if (demo::skeletons()) return;
 #endif
     for (const auto& [rect, desktop] : strip_) {
         std::vector<const SceneWindow*> inDesktop;
@@ -1226,10 +1226,10 @@ void App::renderBack() {
     // Sayfa: şeridin ve aramanın altında kayar.
     rt->PushAxisAlignedClip(toD2D(clipRect()), D2D1_ANTIALIAS_MODE_ALIASED);
 #ifdef DEBUG
-    if (demo::mosaic()) {
+    if (demo::skeletons()) {
         for (const auto& tile : tiles_) {
-            if (auto* bitmap = mosaicFor(rt, tile.window.hwnd))
-                rt->DrawBitmap(bitmap, toD2D(tile.target), matches(tile.window) ? 1.0f : 0.18f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+            if (auto* bitmap = skeletonFor(rt, tile.window.hwnd))
+                rt->DrawBitmap(bitmap, toD2D(tile.target), matches(tile.window) ? 1.0f : 0.18f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         }
     }
 #endif
@@ -1398,7 +1398,7 @@ void App::renderFront() {
             rt->PopAxisAlignedClip();
             std::wstring title = tile.window.title;
 #ifdef DEBUG
-            if (demo::mosaic()) title = snapshot_.apps[tile.window.appId].name;
+            if (demo::skeletons()) title = snapshot_.apps[tile.window.appId].name;
 #endif
             ComPtr<IDWriteTextLayout> layout;
             dwrite_->CreateTextLayout(title.c_str(), UINT32(title.size()), smallFormat_.Get(), float(420 * s), float(26 * s), layout.GetAddressOf());
