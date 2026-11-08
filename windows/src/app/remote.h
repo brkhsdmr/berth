@@ -29,5 +29,6 @@ private:
     mutable std::mutex lock_;
     std::wstring status_ = tx(L"Kapalı", L"Off");
     bool denied_ = false;
+    bool blocked_ = false; // Mac bu bilgisayarın bağlantısını kesti.
     std::wstring host_, token_;
 };

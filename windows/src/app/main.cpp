@@ -350,7 +350,7 @@ bool App::start(HINSTANCE instance) {
     RegisterHotKey(control_, kRemoteHotKeyId, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_SPACE);
     showTray(true);
     registerLayoutHotkeys();
-    remote_.configure(settings_.remoteHost, settings_.remoteToken, control_, kToggleMessage);
+    remote_.configure(settings_.remoteEnabled ? settings_.remoteHost : std::wstring(), settings_.remoteToken, control_, kToggleMessage);
 
     preview_.init(instance, d2d_.Get(), dwrite_.Get(), wic_.Get(), &desktops_,
                   {[this](const SceneWindow& w) { activate(w); }, [this] { return isOpen_; }});
@@ -489,7 +489,7 @@ void App::showSettings() {
             if (!settings_.taskbarPreview) preview_.hide();
             cornerInside_ = HotCorner::None;
             settings_.save();
-            remote_.configure(settings_.remoteHost, settings_.remoteToken, control_, kToggleMessage);
+            remote_.configure(settings_.remoteEnabled ? settings_.remoteHost : std::wstring(), settings_.remoteToken, control_, kToggleMessage);
             showTray(false); // İpucundaki kısayol yenilensin.
             showTray(true);
         },

@@ -18,6 +18,8 @@ struct Settings {
     bool otherAppsScroll = false;
     /// Mac'teki uygulamanın adı (Tailscale ya da yerel ağ) ve eşleştirme kodu; boşsa bağlanılmaz.
     std::wstring remoteHost, remoteToken;
+    /// Ayarlardan "Bağlantıyı kes" denince false; "Bağlan" ile yeniden açılır.
+    bool remoteEnabled = true;
     /// Arayüz dili; text::Language. Yeniden başlatınca geçerli olur.
     int language = 0;
 
@@ -95,6 +97,7 @@ private:
     void syncLayouts(int select);
     void editLayout(Callbacks::LayoutEdit edit);
     void refreshStatus();
+    bool remoteConnected() const;
     HWND addField(int id, DWORD style, int x, int y, int w, int h = 32);
     void recordKey(int id, UINT vk);
     void applyShortcut(UINT mods, UINT key);

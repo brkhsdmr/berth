@@ -96,16 +96,24 @@ void RemoteLink::run(std::wstring host, std::string token) {
                     std::string line = buffer.substr(0, newline);
                     buffer.erase(0, newline + 1);
                     if (!line.empty() && line.back() == '\r') line.pop_back();
-                    if (line == "OK") { denied_ = false; setStatus(tx(L"Bağlı: ", L"Connected: ") + host); }
+                    if (line == "OK") { denied_ = false; blocked_ = false; setStatus(tx(L"Bağlı: ", L"Connected: ") + host); }
+                    else if (line == "BLOCKED") {
+                        blocked_ = true;
+                        setStatus(tx(L"Mac bu bilgisayarın bağlantısını kesti; Mac'teki Berth ayarlarından izin verin.",
+                                     L"The Mac disconnected this PC; allow it again in Berth's settings on the Mac."));
+                    }
                     else if (line == "DENIED") { denied_ = true; setStatus(tx(L"Kod kabul edilmedi; Mac'teki kodu girin.", L"Code rejected; enter the code shown on the Mac.")); }
                     else if (line == "TOGGLE" && notify_) PostMessageW(notify_, message_, 0, 0);
                 }
             }
             if (socket_.exchange(~0ull) != ~0ull) closesocket(s);
-            if (running_ && !denied_) setStatus(tx(L"Bağlantı koptu; yeniden denenecek.", L"Connection lost; will retry."));
+            if (running_ && !denied_ && !blocked_) setStatus(tx(L"Bağlantı koptu; yeniden denenecek.", L"Connection lost; will retry."));
         }
-        // Yeniden denemeden önce bekle; kapatılırsa hemen çık.
-        for (int i = 0; i < 50 && running_; ++i) Sleep(100);
+        // Yeniden denemeden önce bekle; kapatılırsa hemen çık. Engellendiyse Mac'te izin verilene
+        // kadar seyrek denenir.
+        int wait = blocked_ ? 300 : 50;
+        blocked_ = false;
+        for (int i = 0; i < wait && running_; ++i) Sleep(100);
     }
     WSACleanup();
 }

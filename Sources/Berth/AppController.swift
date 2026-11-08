@@ -187,10 +187,11 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         remoteBridge.onClientsChange = { [weak self] names in self?.settings.connectedRemotes = names }
         settings.onRemoteBridgeChange = { [weak self] enabled in
             guard let self else { return }
-            if enabled { self.remoteBridge.start(token: self.settings.remoteToken) } else { self.remoteBridge.stop() }
+            if enabled { self.remoteBridge.start(token: self.settings.remoteToken, blocked: self.settings.blockedRemotes) } else { self.remoteBridge.stop() }
         }
         settings.onRemoteTokenChange = { [weak self] token in self?.remoteBridge.updateToken(token) }
-        if settings.remoteBridgeEnabled { remoteBridge.start(token: settings.remoteToken) }
+        settings.onBlockedRemotesChange = { [weak self] names in self?.remoteBridge.updateBlocked(names) }
+        if settings.remoteBridgeEnabled { remoteBridge.start(token: settings.remoteToken, blocked: settings.blockedRemotes) }
         registerLayoutHotKeys()
         Permissions.requestAccessibilityIfNeeded()
         refreshWallpaper()
@@ -720,7 +721,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         if names.isEmpty {
             // Adlar verilmemişse: yalnızca bu Mac'e bağlı bir Windows'un oturumu. Uygulamanın
             // olmadığı oturumlarda (başka bir bilgisayar) hareket Mac'in sahnesini açar.
-            guard remoteBridge.sendToggle(matchingTitle: title) else { return false }
+            guard remoteBridge.sendToggle(matchingTitle: title, aliases: settings.remoteSessionAliases) else { return false }
         } else {
             guard names.contains(where: { title.localizedCaseInsensitiveContains($0) }) else { return false }
             guard remoteBridge.sendToggle() else {

@@ -120,6 +120,7 @@ Settings Settings::load() {
         int value = _wtoi(text.c_str());
         if (key == L"remoteHost") s.remoteHost = text;
         else if (key == L"remoteToken") s.remoteToken = text;
+        else if (key == L"remoteEnabled") s.remoteEnabled = value != 0;
         if (key == L"shortcutEnabled") s.shortcutEnabled = value != 0;
         else if (key == L"shortcutMods") s.shortcutMods = UINT(value);
         else if (key == L"shortcutKey" && value > 0) s.shortcutKey = UINT(value);
@@ -143,6 +144,7 @@ void Settings::save() const {
         << L"otherAppsScroll=" << (otherAppsScroll ? 1 : 0) << L"\n"
         << L"remoteHost=" << remoteHost << L"\n"
         << L"remoteToken=" << remoteToken << L"\n"
+        << L"remoteEnabled=" << (remoteEnabled ? 1 : 0) << L"\n"
         << L"language=" << language << L"\n";
 }
 
@@ -682,14 +684,15 @@ void SettingsWindow::buildPage() {
     case 3: {
         statusCard_ = card(88, 76, 0xE7F8, tx(L"Durum", L"Status"), remoteStatus_, 180);
         card(172, 76, 0xE774, tx(L"Mac'in adı", L"Mac name"),
-             tx(L"Tailscale ya da yerel ağdaki adı. Mac'te Berth ayarlarının Windows bağlantısı sayfasında yazar.",
-                L"Its name on Tailscale or the local network, shown on the Mac under Berth Settings > Windows connection."),
+             tx(L"Mac'in adı ya da IP adresi (Mac'te Berth ayarları > Windows). VPN kullanıyorsanız IP adresini girin.",
+                L"The Mac's name or IP address (on the Mac: Berth Settings > Windows). If you use a VPN, enter the IP address."),
              300);
         addField(IdRemoteHost, 0, right - 280, 172 + 22, 280);
         card(256, 76, 0xE72E, tx(L"Eşleştirme kodu", L"Pairing code"),
              tx(L"Mac'teki ayarlarda gösterilen 8 karakterlik kod.", L"The 8-character code shown in the Mac's settings."), 200);
         addField(IdRemoteToken, ES_UPPERCASE, right - 180, 256 + 22, 180);
-        addButton(IdRemoteApply, tx(L"Bağlan", L"Connect"), ButtonKind::Accent, x0 + cw - 150, 348, 150, 34);
+        addButton(IdRemoteApply, remoteConnected() ? tx(L"Bağlantıyı kes", L"Disconnect") : tx(L"Bağlan", L"Connect"),
+                  ButtonKind::Accent, x0 + cw - 150, 348, 150, 34);
         note(348, 64,
              tx(L"Mac'te Windows App ile bu bilgisayara bağlıyken yukarı kaydırma buradaki sahneyi açar. Bağlantıyı bu bilgisayar kurar; güvenlik duvarı ayarı gerekmez.",
                 L"While a Mac is connected to this PC with Windows App, swiping up there opens the scene here. This PC makes the connection, so no firewall rule is needed."),
@@ -976,6 +979,14 @@ void SettingsWindow::refreshStatus() {
         cards_[statusCard_].desc = remoteStatus_;
         InvalidateRect(hwnd_, &cards_[statusCard_].r, FALSE);
     }
+    if (HWND button = GetDlgItem(hwnd_, IdRemoteApply)) {
+        SetWindowTextW(button, remoteConnected() ? tx(L"Bağlantıyı kes", L"Disconnect") : tx(L"Bağlan", L"Connect"));
+        InvalidateRect(button, nullptr, FALSE);
+    }
+}
+
+bool SettingsWindow::remoteConnected() const {
+    return remoteStatus_.rfind(tx(L"Bağlı: ", L"Connected: "), 0) == 0;
 }
 
 void SettingsWindow::syncLayouts(int select) {
@@ -1153,8 +1164,13 @@ void SettingsWindow::command(int id, int code) {
         wchar_t host[256] = L"", token[64] = L"";
         GetDlgItemTextW(hwnd_, IdRemoteHost, host, 256);
         GetDlgItemTextW(hwnd_, IdRemoteToken, token, 64);
-        settings_.remoteHost = host;
-        settings_.remoteToken = token;
+        if (remoteConnected()) {
+            settings_.remoteEnabled = false; // Bağlıyken düğme "Bağlantıyı kes".
+        } else {
+            settings_.remoteHost = host;
+            settings_.remoteToken = token;
+            settings_.remoteEnabled = true;
+        }
         break;
     }
     case IdTouchOpen:

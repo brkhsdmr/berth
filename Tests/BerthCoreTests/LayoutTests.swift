@@ -682,4 +682,13 @@ final class RemoteSessionMatcherTests: XCTestCase {
         XCTAssertNil(RemoteSessionMatcher.match(title: "Home PC", computers: []))
         XCTAssertNil(RemoteSessionMatcher.match(title: "Home PC", computers: [""]))
     }
+
+    func testSessionAliasMatchesWhenTitleLacksComputerName() {
+        let computers = ["DESKTOP-7Q2", "BURAKMAIN"]
+        let aliases = ["desktop-7q2": "Work PC"]
+        XCTAssertEqual(RemoteSessionMatcher.match(title: "Work PC", computers: computers, aliases: aliases), "DESKTOP-7Q2")
+        XCTAssertEqual(RemoteSessionMatcher.match(title: "burakmain", computers: computers, aliases: aliases), "BURAKMAIN")
+        XCTAssertNil(RemoteSessionMatcher.match(title: "Home PC", computers: computers, aliases: aliases))
+        XCTAssertNil(RemoteSessionMatcher.match(title: "Work PC", computers: computers, aliases: ["desktop-7q2": "  "]))
+    }
 }

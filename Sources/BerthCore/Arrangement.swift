@@ -163,9 +163,15 @@ public enum RemoteSessionMatcher {
         SearchMatcher.normalize(text).filter { $0.isLetter || $0.isNumber }
     }
 
-    /// Başlığa uyan bağlı bilgisayar; yoksa nil.
-    public static func match(title: String, computers: [String]) -> String? {
+    /// Başlığa uyan bağlı bilgisayar; yoksa nil. `aliases` bilgisayar adından (büyük/küçük harf
+    /// fark etmez) Windows App'teki oturum adına: oturum adı bilgisayarın adını taşımıyorsa
+    /// kullanıcı ayarlardan verir. Önce oturum adları denenir.
+    public static func match(title: String, computers: [String], aliases: [String: String] = [:]) -> String? {
         let haystack = key(title)
-        return computers.first { !key($0).isEmpty && haystack.contains(key($0)) }
+        let byAlias = computers.first { computer in
+            guard let alias = aliases[computer.lowercased()], !key(alias).isEmpty else { return false }
+            return haystack.contains(key(alias))
+        }
+        return byAlias ?? computers.first { !key($0).isEmpty && haystack.contains(key($0)) }
     }
 }

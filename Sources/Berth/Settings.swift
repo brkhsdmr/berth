@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import BerthCore
 import ServiceManagement
 import SwiftUI
+import SystemConfiguration
 
 // MARK: - Model
 
@@ -32,6 +33,8 @@ final class AppSettings: ObservableObject {
         static let remoteBridge = "remoteBridgeEnabled"
         static let remoteToken = "remoteToken"
         static let remoteSessions = "remoteSessionNames"
+        static let blockedRemotes = "remoteBlockedNames"
+        static let sessionAliases = "remoteSessionAliases"
     }
 
     @Published var dockPreviewsEnabled: Bool {
@@ -102,6 +105,39 @@ final class AppSettings: ObservableObject {
     /// Şu an bağlı Windows bilgisayarları (kaydedilmez).
     @Published var connectedRemotes: [String] = []
 
+    /// Bilgisayar adı (küçük harf) → Windows App'teki oturum adı. Oturum başlığı bilgisayarın
+    /// Windows adını taşımıyorsa hareketin hangi bilgisayara gideceği buradan bulunur.
+    @Published var remoteSessionAliases: [String: String] {
+        didSet { UserDefaults.standard.set(remoteSessionAliases, forKey: Key.sessionAliases) }
+    }
+
+    func sessionAlias(for computer: String) -> Binding<String> {
+        Binding(
+            get: { self.remoteSessionAliases[computer.lowercased()] ?? "" },
+            set: { value in
+                let trimmed = value.trimmingCharacters(in: .whitespaces)
+                self.remoteSessionAliases[computer.lowercased()] = trimmed.isEmpty ? nil : trimmed
+            })
+    }
+
+    /// Bağlantısı ayarlardan kesilen Windows bilgisayarları; izin verilene kadar bağlanamaz.
+    @Published private(set) var blockedRemotes: [String]
+
+    func disconnectRemote(_ name: String) {
+        guard !blockedRemotes.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+        setBlockedRemotes(blockedRemotes + [name])
+    }
+
+    func allowRemote(_ name: String) {
+        setBlockedRemotes(blockedRemotes.filter { $0.caseInsensitiveCompare(name) != .orderedSame })
+    }
+
+    private func setBlockedRemotes(_ names: [String]) {
+        blockedRemotes = names
+        UserDefaults.standard.set(names, forKey: Key.blockedRemotes)
+        onBlockedRemotesChange?(names)
+    }
+
     func renewRemoteToken() {
         remoteToken = Self.makeToken()
         UserDefaults.standard.set(remoteToken, forKey: Key.remoteToken)
@@ -140,6 +176,7 @@ final class AppSettings: ObservableObject {
     var onShortcutEnabledChange: ((Bool) -> Void)?
     var onRemoteBridgeChange: ((Bool) -> Void)?
     var onRemoteTokenChange: ((String) -> Void)?
+    var onBlockedRemotesChange: (([String]) -> Void)?
     var onFullScreenDockChange: ((Bool) -> Void)?
     /// Kısayol alınabildiyse `true` döner.
     var onShortcutChange: ((Shortcut) -> Bool)?
@@ -166,6 +203,8 @@ final class AppSettings: ObservableObject {
         // Varsayılan boş: Windows App yapay değiştirici tuşları iletmiyor (ölçüldü), tuşla yönlendirme
         // çalışmıyor. Ağ üzerinden yönlendirme gelene kadar hareket Mac'te kalır.
         remoteSessionNames = defaults.string(forKey: Key.remoteSessions) ?? ""
+        blockedRemotes = defaults.stringArray(forKey: Key.blockedRemotes) ?? []
+        remoteSessionAliases = defaults.dictionary(forKey: Key.sessionAliases) as? [String: String] ?? [:]
         // İlk açılışta izin istenmez: izni zaten verilmişse açık, yoksa kapalı başlar.
         windowPreviewsEnabled = defaults.object(forKey: Key.windowPreviews) as? Bool ?? Permissions.screenRecording
         if let data = defaults.data(forKey: Key.shortcut),
@@ -225,12 +264,53 @@ final class SettingsWindowController {
         self.layoutActions = layoutActions
     }
 
+    private var closeObserver: NSObjectProtocol?
+
     func show() {
         let window = self.window ?? makeWindow()
         self.window = window
         if !window.isVisible { window.center() }
+        // Berth normalde Dock'ta görünmez; ayarlar açıkken başka bir pencereye geçilince pencere
+        // arkada kaybolmasın diye Dock'ta ve Cmd-Tab'de görünür, kapanınca eski haline döner.
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.mainMenu = Self.makeMainMenu()
+        }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Ayarlar açıkken menü çubuğunda görünen kısa menü; düzen menüsü metin alanlarında
+    /// kopyala/yapıştır kısayollarının çalışması için gerekli.
+    private static func makeMainMenu() -> NSMenu {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: tx("Berth'ü Gizle", "Hide Berth"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: tx("Berth'ten Çık", "Quit Berth"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: tx("Düzen", "Edit"))
+        editMenu.addItem(withTitle: tx("Geri Al", "Undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: tx("Yinele", "Redo"), action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: tx("Kes", "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: tx("Kopyala", "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: tx("Yapıştır", "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: tx("Tümünü Seç", "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+        main.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: tx("Pencere", "Window"))
+        windowMenu.addItem(withTitle: tx("Kapat", "Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: tx("Küçült", "Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = windowMenu
+        main.addItem(windowItem)
+        return main
     }
 
     private func makeWindow() -> NSWindow {
@@ -242,6 +322,12 @@ final class SettingsWindowController {
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                NSApp.setActivationPolicy(.accessory)
+                NSApp.mainMenu = nil
+            }
+        }
         return window
     }
 }
@@ -544,6 +630,12 @@ private struct OpenTab: View {
 private struct WindowsTab: View {
     @ObservedObject var settings: AppSettings
 
+    private var macName: String { Host.current().localizedName ?? ProcessInfo.processInfo.hostName }
+    /// Tailscale'i olmayan bilgisayarlar için: `<yerel ad>.local` ve yerel ağ IP adresleri.
+    private var localAddresses: [String] {
+        let bonjour = SCDynamicStoreCopyLocalHostName(nil).map { "\($0 as String).local" }
+        return (bonjour.map { [$0] } ?? []) + RemoteBridge.localAddresses()
+    }
     private var connected: Bool { settings.remoteBridgeEnabled && !settings.connectedRemotes.isEmpty }
     private var statusColor: Color { connected ? .green : settings.remoteBridgeEnabled ? .orange : .secondary }
     private var statusLabel: String { connected ? tx("Bağlı", "Connected") : settings.remoteBridgeEnabled ? tx("Bekleniyor", "Waiting") : tx("Kapalı", "Off") }
@@ -576,30 +668,106 @@ private struct WindowsTab: View {
                 Toggle(tx("Windows App oturumunda hareketi Windows'a gönder", "Send the gesture to Windows in Windows App sessions"), isOn: $settings.remoteBridgeEnabled)
                     .disabled(settings.trackpadFingers == 0)
                 if settings.remoteBridgeEnabled {
-                    TextField(tx("Oturum adları", "Session names"), text: $settings.remoteSessionNames, prompt: Text(tx("Boşsa: bu Mac'e bağlı Windows'larla eşleşen oturumlar", "If empty: sessions matching a Windows PC connected to this Mac")))
+                    if !settings.remoteSessionNames.isEmpty {
+                        TextField(tx("Oturum adları", "Session names"), text: $settings.remoteSessionNames, prompt: Text(tx("Boşsa: bu Mac'e bağlı Windows'larla eşleşen oturumlar", "If empty: sessions matching a Windows PC connected to this Mac")))
+                    }
                     LabeledContent(tx("Bu Mac'in adı", "This Mac's name")) {
-                        Text(Host.current().localizedName ?? ProcessInfo.processInfo.hostName).textSelection(.enabled)
+                        HStack(spacing: 6) {
+                            Text(macName).textSelection(.enabled)
+                            CopyButton(value: macName)
+                        }
                     }
                     LabeledContent(tx("Eşleştirme kodu", "Pairing code")) {
                         HStack(spacing: 8) {
                             Text(settings.remoteToken).font(.body.monospaced()).textSelection(.enabled)
+                            CopyButton(value: settings.remoteToken)
                             Button(tx("Yenile", "Renew")) { settings.renewRemoteToken() }
                         }
                     }
-                    LabeledContent(tx("Bağlı", "Connected")) {
-                        Text(settings.connectedRemotes.isEmpty ? tx("Bağlı Windows yok", "No Windows connected") : settings.connectedRemotes.joined(separator: ", "))
-                            .foregroundStyle(settings.connectedRemotes.isEmpty ? .secondary : .primary)
+                    LabeledContent(tx("Yerel ağ adresi", "Local network address")) {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            ForEach(localAddresses, id: \.self) { address in
+                                HStack(spacing: 6) {
+                                    Text(address).font(.body.monospaced()).textSelection(.enabled)
+                                    CopyButton(value: address)
+                                }
+                            }
+                        }
                     }
                 }
             } header: {
                 Text(tx("Uzak masaüstü (Windows)", "Remote desktop (Windows)"))
             } footer: {
-                Text(tx("Windows'taki Berth ayarlarına bu Mac'in adını ve kodu girin; Windows uygulaması bu Mac'e Tailscale ya da yerel ağ üzerinden bağlanır. Windows App'te o oturum öndeyken yukarı kaydırma oradaki sahneyi açar ya da kapatır. Uygulamanın kurulu olmadığı oturumlarda Mac'in sahnesi açılır.", "Enter this Mac's name and the code in Berth's settings on Windows; it connects to this Mac over Tailscale or the local network. While that session is in front in Windows App, swiping up opens or closes the scene there. In sessions without Berth, the Mac's scene opens."))
+                Text(tx("Windows'taki Berth ayarlarına bu Mac'in adını ve kodu girin; bağlantıyı Windows'taki uygulama kurar. Ad bulunamıyorsa ya da bir VPN kullanıyorsanız, aynı ağdaki veya aynı modeme bağlı bilgisayardan bağlanmak için Mac'in adı yerine yerel ağ adresini (.local ya da IP) yazın. Birden çok Windows aynı kodla bağlanabilir. Windows App'te o oturum öndeyken yukarı kaydırma oradaki sahneyi açar ya da kapatır. Uygulamanın kurulu olmadığı oturumlarda Mac'in sahnesi açılır.", "Enter this Mac's name and the code in Berth's settings on Windows; the PC makes the connection. If the name can't be found or you use a VPN, enter the local network address (.local or IP) instead of the Mac's name to connect from a PC on the same network or router. Several Windows PCs can connect with the same code. While that session is in front in Windows App, swiping up opens or closes the scene there. In sessions without Berth, the Mac's scene opens."))
                     .font(.callout).foregroundStyle(.secondary)
+            }
+            if settings.remoteBridgeEnabled {
+                Section {
+                    if settings.connectedRemotes.isEmpty && settings.blockedRemotes.isEmpty {
+                        Text(tx("Bağlı Windows yok", "No Windows connected")).foregroundStyle(.secondary)
+                    }
+                    ForEach(settings.connectedRemotes, id: \.self) { name in
+                        LabeledContent {
+                            HStack(spacing: 8) {
+                                TextField("", text: settings.sessionAlias(for: name), prompt: Text(tx("Windows App oturum adı", "Windows App session name")))
+                                    .labelsHidden()
+                                    .frame(width: 190)
+                                    .help(tx("Windows App'teki oturum başlığı bu bilgisayarın adını taşımıyorsa buraya yazın.", "If the session title in Windows App doesn't include this PC's name, enter it here."))
+                                Button(tx("Bağlantıyı kes", "Disconnect")) { settings.disconnectRemote(name) }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Circle().fill(.green).frame(width: 7, height: 7)
+                                Text(name)
+                            }
+                        }
+                    }
+                    ForEach(settings.blockedRemotes, id: \.self) { name in
+                        LabeledContent {
+                            Button(tx("İzin ver", "Allow")) { settings.allowRemote(name) }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Circle().fill(.secondary).frame(width: 7, height: 7)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(name)
+                                    Text(tx("Bağlantısı kesildi", "Disconnected")).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text(tx("Bağlı bilgisayarlar", "Connected PCs"))
+                } footer: {
+                    Text(tx("Hareket, Windows App'te öndeki oturumun başlığı bilgisayarın adını ya da yanına yazılan oturum adını taşıyorsa o bilgisayara gider. Bağlantısı kesilen bilgisayar, izin verilene kadar yeniden bağlanamaz; kodu yenilemek tüm bilgisayarların bağlantısını keser.", "The gesture goes to a PC when the title of the session in front in Windows App includes the PC's name or the session name entered next to it. A disconnected PC can't reconnect until you allow it again; renewing the code disconnects every PC."))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
 
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Değeri panoya kopyalayan küçük simge; kopyalanınca kısa süre onay işareti gösterir.
+private struct CopyButton: View {
+    let value: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(value, forType: .string)
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .foregroundStyle(copied ? Color.green : Color.secondary)
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(tx("Kopyala", "Copy"))
+        .accessibilityLabel(tx("Kopyala", "Copy"))
     }
 }
 

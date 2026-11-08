@@ -10,7 +10,8 @@ import OSLog
 /// gelince buradan "TOGGLE" gönderilir. Bağlantıyı Windows açtığı için orada güvenlik duvarı
 /// kuralı gerekmez.
 ///
-/// Protokol satır tabanlı: istemci "HELLO <kod> <bilgisayar adı>" der, kod tutarsa "OK" alır.
+/// Protokol satır tabanlı: istemci "HELLO <kod> <bilgisayar adı>" der, kod tutarsa "OK" alır;
+/// kod yanlışsa "DENIED", bilgisayarın bağlantısı ayarlardan kesildiyse "BLOCKED".
 /// Yalnızca Tailscale (100.64.0.0/10) ve yerel ağ adreslerinden gelen bağlantılar kabul edilir.
 final class RemoteBridge: @unchecked Sendable {
     static let port: UInt16 = 47654
@@ -20,12 +21,15 @@ final class RemoteBridge: @unchecked Sendable {
     private var clients: [ObjectIdentifier: (connection: NWConnection, name: String)] = [:]
     private var pending: [ObjectIdentifier: NWConnection] = [:]
     private var token = ""
+    /// Bağlantısı kesilen bilgisayarlar (küçük harfle); kod doğru olsa da reddedilir.
+    private var blocked: Set<String> = []
     /// Bağlı bilgisayarların adları değişti (ana iş parçacığında çağrılır).
     var onClientsChange: (@MainActor ([String]) -> Void)?
 
-    func start(token: String) {
+    func start(token: String, blocked: [String]) {
         queue.async {
             self.token = token
+            self.blocked = Set(blocked.map { $0.lowercased() })
             guard self.listener == nil else { return }
             do {
                 let parameters = NWParameters.tcp
@@ -65,13 +69,27 @@ final class RemoteBridge: @unchecked Sendable {
         }
     }
 
+    /// Listedeki bilgisayarların bağlantısını keser ve yeniden bağlanmalarını engeller.
+    func updateBlocked(_ names: [String]) {
+        queue.async {
+            self.blocked = Set(names.map { $0.lowercased() })
+            let dropped = self.clients.filter { self.blocked.contains($0.value.name.lowercased()) }
+            guard !dropped.isEmpty else { return }
+            for (id, client) in dropped {
+                self.clients[id] = nil
+                client.connection.send(content: Data("BLOCKED\n".utf8), completion: .contentProcessed { _ in client.connection.cancel() })
+            }
+            self.publish()
+        }
+    }
+
     /// Sahneyi aç/kapat komutunu gönderir. `title` verilirse yalnızca oturum başlığına uyan
     /// bilgisayara; uyan yoksa hiçbirine. Gönderildiyse true.
-    func sendToggle(matchingTitle title: String? = nil) -> Bool {
+    func sendToggle(matchingTitle title: String? = nil, aliases: [String: String] = [:]) -> Bool {
         queue.sync {
             var targets = Array(clients.values)
             if let title {
-                guard let name = RemoteSessionMatcher.match(title: title, computers: targets.map(\.name)) else { return false }
+                guard let name = RemoteSessionMatcher.match(title: title, computers: targets.map(\.name), aliases: aliases) else { return false }
                 targets = targets.filter { $0.name == name }
             }
             guard !targets.isEmpty else { return false }
@@ -129,8 +147,13 @@ final class RemoteBridge: @unchecked Sendable {
                 connection.send(content: Data("DENIED\n".utf8), completion: .contentProcessed { _ in connection.cancel() })
                 return
             }
+            let name = parts.count > 2 ? parts[2] : "Windows"
+            guard !blocked.contains(name.lowercased()) else {
+                connection.send(content: Data("BLOCKED\n".utf8), completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
             pending[id] = nil
-            clients[id] = (connection, parts.count > 2 ? parts[2] : "Windows")
+            clients[id] = (connection, name)
             connection.send(content: Data("OK\n".utf8), completion: .contentProcessed { _ in })
             publish()
         } else if parts.first == "PING", clients[id] != nil {
@@ -146,6 +169,27 @@ final class RemoteBridge: @unchecked Sendable {
     private func publish() {
         let names = clients.values.map(\.name).sorted()
         DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onClientsChange?(names) } }
+    }
+
+    /// Bu Mac'in yerel ağdaki IPv4 adresleri (Tailscale hariç); Tailscale'i olmayan bilgisayarlar
+    /// bu adreslerden ya da `<ad>.local` ile bağlanır.
+    static func localAddresses() -> [String] {
+        var result: [String] = []
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0, let first = list else { return [] }
+        defer { freeifaddrs(list) }
+        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let entry = pointer.pointee
+            guard let address = entry.ifa_addr, address.pointee.sa_family == UInt8(AF_INET),
+                  (entry.ifa_flags & UInt32(IFF_UP)) != 0, (entry.ifa_flags & UInt32(IFF_LOOPBACK)) == 0 else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(address, socklen_t(address.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            let text = String(cString: host)
+            let b = text.split(separator: ".").compactMap { UInt8($0) }
+            guard b.count == 4, b[0] == 10 || (b[0] == 192 && b[1] == 168) || (b[0] == 172 && (16...31).contains(b[1])) else { continue }
+            if !result.contains(text) { result.append(text) }
+        }
+        return result
     }
 
     /// Tailscale (100.64.0.0/10), yerel ağ ve döngü adresleri.
