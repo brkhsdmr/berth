@@ -8,7 +8,9 @@ Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
 ![Berth on macOS: every app in its own place with live previews, the desktop strip at the top (window contents replaced with placeholders for this screenshot)](docs/images/scene.jpg)
 
-**[▶ Watch the demo](docs/videos/Berth-demo.mp4)** (2:42, macOS and Windows; window contents replaced with placeholders)
+Demo, macOS and Windows (window contents replaced with placeholders):
+
+https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 
 ## Features
 

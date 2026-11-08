@@ -8,7 +8,9 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 ![macOS'ta Berth: her uygulama kendi yerinde, canlı önizlemeler, üstte masaüstü şeridi (pencere içerikleri bu görüntü için yer tutucuyla değiştirildi)](docs/images/scene.jpg)
 
-**[▶ Tanıtım videosunu izle](docs/videos/Berth-demo.mp4)** (2:42, macOS ve Windows; pencere içerikleri yer tutucuyla değiştirildi)
+Tanıtım, macOS ve Windows (pencere içerikleri yer tutucuyla değiştirildi):
+
+https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 
 ## Özellikler
 
