@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include "../src/core/gesture.h"
 #include "../src/core/layout.h"
 
 static int failures = 0, checks = 0;
@@ -105,6 +106,56 @@ int main() {
     order = {0, 1, 2};
     moveToGap(order, 0, 3);
     CHECK((order == std::vector<int>{1, 2, 0}));
+
+    // Uygulama pencereleri ızgarası
+    {
+        const Rect area{0, 0, 1600, 900};
+        CHECK(exposeFrames(area, {}, 20).empty());
+        auto one = exposeFrames(area, {16.0 / 9}, 20);
+        CHECK(one.size() == 1 && near(one[0].w, 1600) && near(one[0].h, 900));
+        auto two = exposeFrames(area, {1.6, 1.6}, 20);
+        CHECK(two.size() == 2 && near(two[0].y, two[1].y) && two[0].right() <= two[1].x);
+        auto five = exposeFrames(area, {1.6, 1.6, 1.6, 1.6, 1.6}, 20);
+        CHECK(five.size() == 5);
+        for (const auto& r : five) CHECK(r.x >= -0.5 && r.right() <= 1600.5 && r.y >= -0.5 && r.bottom() <= 900.5);
+        for (size_t i = 0; i < five.size(); ++i)
+            for (size_t j = i + 1; j < five.size(); ++j) CHECK(!five[i].intersects(five[j]));
+        // Eksik son satır ortalanır.
+        CHECK(near(five[3].midX() + five[4].midX(), 1600, 1));
+        // Dar pencere en-boy oranını korur.
+        auto tall = exposeFrames(area, {0.5}, 20);
+        CHECK(near(tall[0].h, 900) && near(tall[0].w, 450) && near(tall[0].midX(), 800));
+    }
+
+    // Dokunmatik yüzeyde üç parmakla kaydırma
+    {
+        auto frame = [](double y, int count = 3) {
+            std::vector<TouchPoint> points;
+            for (int i = 0; i < count; ++i) points.push_back({0.4 + 0.1 * i, y});
+            return points;
+        };
+        SwipeRecognizer up;
+        CHECK(up.feed(frame(0.7)) == SwipeAction::None);
+        CHECK(up.feed(frame(0.65)) == SwipeAction::None);
+        CHECK(up.feed(frame(0.5)) == SwipeAction::Up);
+        CHECK(up.feed(frame(0.3)) == SwipeAction::None); // Oturumda bir kez.
+        CHECK(up.feed({}) == SwipeAction::None);
+        CHECK(up.feed(frame(0.3)) == SwipeAction::None);
+        CHECK(up.feed(frame(0.5)) == SwipeAction::Down); // Yeni oturum.
+
+        SwipeRecognizer four;
+        CHECK(four.feed(frame(0.7, 4)) == SwipeAction::None);
+        CHECK(four.feed(frame(0.7)) == SwipeAction::None);
+        CHECK(four.feed(frame(0.4)) == SwipeAction::None); // Dört parmak değdi: bu oturum bizim değil.
+
+        SwipeRecognizer sideways;
+        sideways.feed({{0.2, 0.5}, {0.3, 0.5}, {0.4, 0.5}});
+        CHECK(sideways.feed({{0.5, 0.6}, {0.6, 0.6}, {0.7, 0.6}}) == SwipeAction::None); // Yatay ağır basıyor.
+
+        SwipeRecognizer two;
+        two.feed(frame(0.7, 2));
+        CHECK(two.feed(frame(0.3, 2)) == SwipeAction::None);
+    }
 
     std::printf("%d kontrol, %d hata\n", checks, failures);
     return failures == 0 ? 0 : 1;

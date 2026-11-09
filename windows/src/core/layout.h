@@ -96,6 +96,10 @@ constexpr int kMaxVisiblePile = 6;
 /// Pencereleri hücrenin içine dizer; yığın alanın dibine oturur. `aspects` en-boy oranlarıdır.
 std::vector<Rect> pileFrames(const Rect& rect, const std::vector<double>& aspects, double overlap = 0.1);
 
+/// Bir uygulamanın pencereleri (App Exposé gibi): alanı en iyi dolduran sütun sayısıyla ızgara.
+/// Her pencere en-boy oranını koruyarak hücresine ortalanır, eksik satırlar ortalanır.
+std::vector<Rect> exposeFrames(const Rect& area, const std::vector<double>& aspects, double gap);
+
 enum class SnapPosition { LeftHalf, RightHalf, Fill };
 /// İki yarım tam noktada buluşur: arada çizgi kalmaz, üst üste de binmezler.
 Rect snapFrame(SnapPosition position, const Rect& workArea);

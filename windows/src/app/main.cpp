@@ -24,6 +24,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "../core/gesture.h"
 #include "../core/layout.h"
 #include "demo.h"
 #include "icon.h"
@@ -33,6 +34,7 @@
 #include "source.h"
 #include "taskbar.h"
 #include "text.h"
+#include "touchpad.h"
 #include "vdesktop.h"
 
 #pragma comment(lib, "d2d1")
@@ -61,6 +63,8 @@ constexpr int kHotKeyId = 1;
 /// Mac'teki uygulama, RDP oturumunda üç parmak hareketini bu kısayolla iletir. Mac'in kendi
 /// kısayoluyla (⌥⇧Space) çakışmasın diye Ctrl de eklidir.
 constexpr int kRemoteHotKeyId = 2;
+/// Öndeki uygulamanın pencereleri (Mac'teki App Exposé gibi).
+constexpr int kAppWindowsHotKeyId = 3;
 constexpr UINT_PTR kAnimationTimer = 1;
 constexpr UINT_PTR kCloseTimer = 2;
 constexpr UINT_PTR kTaskbarTimer = 3;
@@ -160,6 +164,8 @@ class App {
 public:
     bool start(HINSTANCE instance);
     void toggle();
+    /// Öndeki uygulamanın pencereleri; açıksa kapatır.
+    void toggleAppWindows();
     void openSettings() { showSettings(); }
     void notify(const std::wstring& text);
     void refreshPinPaths();
@@ -174,9 +180,13 @@ public:
     void activateWindow(const SceneWindow& window) { activate(window); }
 
 private:
-    void open();
+    /// `focus` verilirse yalnızca o pencerenin uygulamasının pencereleri gösterilir.
+    void open(HWND focus = nullptr);
     void close();
     void layout();
+    void layoutAppWindows();
+    void swiped(SwipeAction action);
+    void touchInput(LPARAM input);
     void registerThumbnails();
     void clearStripThumbnails();
     std::vector<HTHUMBNAIL> stripThumbs_;
@@ -225,6 +235,11 @@ private:
     HWND control_ = nullptr, back_ = nullptr, front_ = nullptr;
     VirtualDesktops desktops_;
     bool isOpen_ = false;
+    /// Boş değilse sahne yalnızca bu uygulamanın pencerelerini gösterir.
+    std::string focusApp_;
+    TouchpadReader touchpad_;
+    SwipeRecognizer swipe_{3};
+    ULONGLONG lastTouch_ = 0;
     Snapshot snapshot_;
     std::vector<Pin> pins_;
     std::vector<Tile> tiles_;
@@ -348,6 +363,8 @@ bool App::start(HINSTANCE instance) {
         settings_.shortcutEnabled = false; // Başkası almış; ayarlarda kapalı görünür, kullanıcı başka tuş seçer.
     }
     RegisterHotKey(control_, kRemoteHotKeyId, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_SPACE);
+    RegisterHotKey(control_, kAppWindowsHotKeyId, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_DOWN);
+    if (settings_.touchpadGestures) touchpad_.start(control_);
     showTray(true);
     registerLayoutHotkeys();
     remote_.configure(settings_.remoteEnabled ? settings_.remoteHost : std::wstring(), settings_.remoteToken, control_, kToggleMessage);
@@ -490,6 +507,8 @@ void App::showSettings() {
             cornerInside_ = HotCorner::None;
             settings_.save();
             remote_.configure(settings_.remoteEnabled ? settings_.remoteHost : std::wstring(), settings_.remoteToken, control_, kToggleMessage);
+            if (settings_.touchpadGestures) touchpad_.start(control_);
+            else touchpad_.stop();
             showTray(false); // İpucundaki kısayol yenilensin.
             showTray(true);
         },
@@ -612,11 +631,49 @@ void App::toggle() {
     else open();
 }
 
-void App::open() {
+void App::toggleAppWindows() {
+    if (isOpen_) {
+        close();
+        return;
+    }
+    if (GetTickCount64() - closedByDeactivationAt_ < 700) {
+        closedByDeactivationAt_ = 0;
+        return;
+    }
+    // Öndeki pencere yoksa (masaüstü kilitli ya da oturum bağlı değil) hiçbir şey açılmaz.
+    HWND front = GetForegroundWindow();
+    if (front && front != front_ && front != back_) open(front);
+}
+
+/// Yukarı: sahne (yalnızca uygulama pencereleri açıksa tüm sahneye geçer). Aşağı: açıksa kapatır,
+/// değilse öndeki uygulamanın pencereleri. Mac'teki hareketlerle aynı.
+void App::swiped(SwipeAction action) {
+    if (action == SwipeAction::Up) {
+        if (isOpen_ && focusApp_.empty()) return;
+        if (isOpen_) close();
+        open();
+    } else if (action == SwipeAction::Down) {
+        if (isOpen_) close();
+        else toggleAppWindows();
+    }
+}
+
+void App::touchInput(LPARAM input) {
+    std::vector<TouchPoint> contacts;
+    if (!touchpad_.read(input, contacts)) return;
+    ULONGLONG now = GetTickCount64();
+    // Parmaklar kalkınca boş çerçeve gelmediyse (kaçırılan rapor) oturum burada biter.
+    if (now - lastTouch_ > 250) swipe_.feed({});
+    lastTouch_ = now;
+    SwipeAction action = swipe_.feed(contacts);
+    if (action != SwipeAction::None) swiped(action);
+}
+
+void App::open(HWND focus) {
     preview_.hide();
     POINT cursor;
     GetCursorPos(&cursor);
-    HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR monitor = focus ? MonitorFromWindow(focus, MONITOR_DEFAULTTOPRIMARY) : MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
     sceneMonitor_ = monitor;
     MONITORINFO info{sizeof info};
     GetMonitorInfoW(monitor, &info);
@@ -634,6 +691,24 @@ void App::open() {
     scale_ = dpi / 96.0;
 
     snapshot_ = readSnapshot(desktops_);
+    focusApp_.clear();
+    if (focus) {
+        // Öndeki pencerenin uygulaması: aynı süreçteki pencereler (iletişim kutusu da sayılır).
+        DWORD pid = 0;
+        GetWindowThreadProcessId(focus, &pid);
+        for (const auto& [id, app] : snapshot_.apps) {
+            for (const auto& w : app.windows) {
+                DWORD own = 0;
+                GetWindowThreadProcessId(w.hwnd, &own);
+                if (w.hwnd == focus || (pid && own == pid)) focusApp_ = id;
+            }
+            if (!focusApp_.empty()) break;
+        }
+        if (focusApp_.empty()) {
+            snapshot_ = {};
+            return;
+        }
+    }
     refreshPinPaths();
 
     // İlk açılış: açık uygulamaların ilk on tanesi sabitlenir, sonra yerleri korunur.
@@ -707,6 +782,7 @@ void App::open() {
 void App::close() {
     if (!isOpen_) return;
     isOpen_ = false;
+    focusApp_.clear();
     KillTimer(control_, kAnimationTimer);
     KillTimer(control_, kCloseTimer);
     KillTimer(control_, kScrollTimer);
@@ -747,6 +823,10 @@ void App::layout() {
     placed_.clear();
     otherApps_.clear();
     pinnedSlots_.clear();
+    if (!focusApp_.empty()) {
+        layoutAppWindows();
+        return;
+    }
     const double s = scale_;
 
     // Masaüstü şeridi
@@ -851,6 +931,48 @@ void App::layout() {
     applyScroll();
     // Görünmeyen pencereler uçmaz, yerinde solarak gelir.
     for (auto& tile : tiles_) tile.flies = tile.flies && viewport_.intersects(tile.target);
+}
+
+/// Yalnızca bir uygulamanın pencereleri: büyük ızgara, şerit ve arama yok. Sıra ekrandaki yerden
+/// gelir (yukarıdan aşağı, soldan sağa); bu masaüstündekiler önce, küçültülenler en sonda.
+void App::layoutAppWindows() {
+    const double s = scale_;
+    hintRect_ = {};
+    newDesktopRect_ = {};
+    maxScroll_ = scrollOffset_ = scrollTarget_ = 0;
+    viewport_ = {0, 0, double(width_), double(height_)};
+    auto found = snapshot_.apps.find(focusApp_);
+    if (found == snapshot_.apps.end()) return;
+    std::vector<SceneWindow> windows = found->second.windows;
+    auto rank = [](const SceneWindow& w) { return w.minimized ? 2 : w.onCurrentDesktop ? 0 : 1; };
+    std::stable_sort(windows.begin(), windows.end(), [&](const SceneWindow& a, const SceneWindow& b) {
+        if (rank(a) != rank(b)) return rank(a) < rank(b);
+        if (a.frame.top / 80 != b.frame.top / 80) return a.frame.top < b.frame.top;
+        return a.frame.left < b.frame.left;
+    });
+    std::vector<double> aspects;
+    for (const auto& w : windows) aspects.push_back(w.aspect());
+    // Üstte uygulamanın adı, altta boşluk; başlık rozeti için önizlemelerin arası geniş.
+    Rect area{48 * s, 76 * s, width_ - 96 * s, height_ - 76 * s - 40 * s};
+    auto frames = exposeFrames(area, aspects, 36 * s);
+    const RECT origin = area_;
+    for (size_t i = 0; i < windows.size(); ++i) {
+        Rect frame = frames[i];
+        // Pencere gerçek boyutunun üstüne büyümez.
+        double realW = double(windows[i].frame.right - windows[i].frame.left);
+        if (!windows[i].minimized && realW > 0 && frame.w > realW) {
+            double k = realW / frame.w;
+            frame = {frame.midX() - frame.w * k / 2, frame.midY() - frame.h * k / 2, frame.w * k, frame.h * k};
+        }
+        Tile tile;
+        tile.window = windows[i];
+        tile.page = tile.target = frame;
+        const auto& f = windows[i].frame;
+        tile.start = {double(f.left - origin.left), double(f.top - origin.top), double(f.right - f.left), double(f.bottom - f.top)};
+        tile.flies = windows[i].onCurrentDesktop && !windows[i].minimized;
+        hits_.push_back({frame, HitKind::Window, tiles_.size(), true, frame});
+        tiles_.push_back(tile);
+    }
 }
 
 /// Üst kenar yalnızca kaydırılmışken kırpılır: açılışta pencereler şeridin hizasından da uçar.
@@ -1170,8 +1292,22 @@ void App::renderBack() {
         rt->DrawTextLayout(D2D1::Point2F(float(rect.x - 6 * s), float(rect.bottom() + 3 * s)), layout.Get(), white.Get());
     }
 
+    // Uygulama pencereleri görünümü: üstte uygulamanın simgesi ve adı.
+    if (!focusApp_.empty()) {
+        const auto& app = snapshot_.apps[focusApp_];
+        ComPtr<IDWriteTextLayout> layout;
+        dwrite_->CreateTextLayout(app.name.c_str(), UINT32(app.name.size()), labelFormat_.Get(), float(width_ - 200 * s), float(28 * s), layout.GetAddressOf());
+        DWRITE_TEXT_METRICS m{};
+        layout->GetMetrics(&m);
+        double iconSize = 28 * s, total = iconSize + 10 * s + m.width;
+        double x = width_ / 2.0 - total / 2, cy = 38 * s;
+        if (auto* icon = iconFor(rt, app.path, backIcons_))
+            rt->DrawBitmap(icon, D2D1::RectF(float(x), float(cy - iconSize / 2), float(x + iconSize), float(cy + iconSize / 2)));
+        drawText(rt, app.name, {x + iconSize + 10 * s, cy - 14 * s, double(m.width) + 4 * s, 28 * s}, labelFormat_.Get(), white.Get(), true);
+    }
+
     // Arama kutusu. Uygulama paneli açıkken arama satırı panelin içindedir; arkada ikincisi görünmesin.
-    if (appResults_.empty() || query_.empty()) {
+    if (focusApp_.empty() && (appResults_.empty() || query_.empty())) {
         const Rect& r = hintRect_;
         double h = r.h;
         bool typing = searchFocused_ || !query_.empty();
@@ -1609,6 +1745,10 @@ void App::refreshScene() {
     }
     snapshot_ = readSnapshot(desktops_);
     layout();
+    if (!focusApp_.empty() && tiles_.empty()) {
+        close(); // Uygulamanın son penceresi kapandı.
+        return;
+    }
     hover_ = -1;
     hoverAction_ = -1;
     registerThumbnails();
@@ -1935,6 +2075,8 @@ void App::applyQuery() {
 }
 
 void App::character(wchar_t ch) {
+    // Uygulama pencereleri görünümünde arama yok: yalnızca Esc ve Enter.
+    if (!focusApp_.empty() && ch != VK_ESCAPE && ch != VK_RETURN) return;
     if (ch == VK_ESCAPE) {
         if (query_.empty()) {
             close();
@@ -2289,11 +2431,16 @@ LRESULT App::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
-        toggle();
+        if (int(wp) == kAppWindowsHotKeyId) toggleAppWindows();
+        else toggle();
         return 0;
     case kToggleMessage:
-        toggle();
+        if (wp == 1) toggleAppWindows();
+        else toggle();
         return 0;
+    case WM_INPUT:
+        if (hwnd == control_) touchInput(lp);
+        return DefWindowProcW(hwnd, msg, wp, lp);
     case kTrayMessage:
         if (LOWORD(lp) == WM_LBUTTONUP) toggle();
         else if (LOWORD(lp) == WM_RBUTTONUP) trayMenu();

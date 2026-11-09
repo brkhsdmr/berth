@@ -20,9 +20,10 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **Keyboard.** Arrow keys move between previews, Enter switches, ⌘1…9 / Ctrl+1…9 jumps to a desktop.
 - **Window actions** right on the preview: snap left or right, fill the screen, minimize, close, and on macOS move to the next display.
 - **Workspace layouts.** Save where every window is (desktop, position, size) and restore it later, with its own shortcut. Closed apps are launched for you.
-- **Many ways to open.** Keyboard shortcut, a hot corner, the menu bar or tray icon, or a three- or four-finger swipe on a Mac trackpad.
+- **Many ways to open.** Keyboard shortcut, a hot corner, the menu bar or tray icon, or a three- or four-finger swipe on a Mac trackpad. On Windows, Berth recognizes three-finger touchpad swipes itself, without waiting for Windows' own gestures.
+- **One app's windows (Windows).** Swipe down with three fingers, or press Ctrl+Alt+Shift+↓, to see every window of the app in front in a large grid, like App Exposé on the Mac.
 - **Dock and taskbar previews.** Hover an icon to see that app's windows on every desktop.
-- **Mac ↔ Windows bridge.** When you're connected to a Windows PC with Microsoft's Windows App (Remote Desktop), swiping up on the Mac trackpad opens Berth on that PC instead.
+- **Mac ↔ Windows bridge.** When you're connected to a Windows PC with Microsoft's Windows App (Remote Desktop), swiping up on the Mac trackpad opens Berth on that PC instead, and swiping down shows the windows of the app in front there. Several PCs can connect to one Mac.
 - **Private by design.** No account, no analytics, no network unless you turn on the Mac–Windows bridge. See [privacy](store/privacy.md).
 
 <table><tr>

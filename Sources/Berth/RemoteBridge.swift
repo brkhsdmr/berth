@@ -86,6 +86,26 @@ final class RemoteBridge: @unchecked Sendable {
     /// Sahneyi aç/kapat komutunu gönderir. `title` verilirse yalnızca oturum başlığına uyan
     /// bilgisayara; uyan yoksa hiçbirine. Gönderildiyse true.
     func sendToggle(matchingTitle title: String? = nil, aliases: [String: String] = [:]) -> Bool {
+        send(.toggle, matchingTitle: title, aliases: aliases)
+    }
+
+    enum Command: String {
+        /// Sahneyi aç/kapat (yukarı kaydırma).
+        case toggle = "TOGGLE"
+        /// Öndeki uygulamanın pencereleri (aşağı kaydırma). Eski Windows sürümleri bu satırı yok sayar.
+        case appWindows = "APPWINDOWS"
+    }
+
+    /// Başlığa uyan bağlı bilgisayar var mı (bir şey göndermeden).
+    func reaches(matchingTitle title: String?, aliases: [String: String] = [:]) -> Bool {
+        queue.sync {
+            let names = clients.values.map(\.name)
+            guard let title else { return !names.isEmpty }
+            return RemoteSessionMatcher.match(title: title, computers: names, aliases: aliases) != nil
+        }
+    }
+
+    func send(_ command: Command, matchingTitle title: String? = nil, aliases: [String: String] = [:]) -> Bool {
         queue.sync {
             var targets = Array(clients.values)
             if let title {
@@ -93,7 +113,7 @@ final class RemoteBridge: @unchecked Sendable {
                 targets = targets.filter { $0.name == name }
             }
             guard !targets.isEmpty else { return false }
-            let data = Data("TOGGLE\n".utf8)
+            let data = Data("\(command.rawValue)\n".utf8)
             for client in targets { client.connection.send(content: data, completion: .contentProcessed { _ in }) }
             return true
         }

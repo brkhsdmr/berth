@@ -44,3 +44,17 @@ enum DockAutoHide {
         UserDefaults.standard.removeObject(forKey: pendingKey)
     }
 }
+
+/// macOS'un App Exposé'si (öndeki uygulamanın pencereleri). Berth aşağı kaydırmayı Windows App
+/// oturumu için almışken o an oturum değiştiyse hareket buradan macOS'a geri verilir. Belgelenmemiş
+/// `CoreDockSendNotification` çalışma anında aranır; bulunamazsa hiçbir şey olmaz.
+enum AppExpose {
+    private typealias Send = @convention(c) (CFString, Int32) -> Void
+    private static let send: Send? = dlopen("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices", RTLD_NOW)
+        .flatMap { dlsym($0, "CoreDockSendNotification") }
+        .map { unsafeBitCast($0, to: Send.self) }
+
+    static func show() {
+        send?("com.apple.expose.front.awake" as CFString, 0)
+    }
+}

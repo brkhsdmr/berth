@@ -20,9 +20,10 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **Klavye.** Oklar önizlemeler arasında gezer, Enter geçer, ⌘1…9 / Ctrl+1…9 o masaüstüne gider.
 - **Önizlemede pencere eylemleri.** Sola ya da sağa yasla, ekranı kapla, küçült, kapat; macOS'ta diğer ekrana taşı.
 - **Çalışma düzenleri.** Her pencerenin yerini (masaüstü, konum, boyut) kaydet, sonra kendi kısayoluyla geri yükle. Kapalı uygulamalar senin için açılır.
-- **Açmanın birçok yolu.** Klavye kısayolu, sıcak köşe, menü çubuğu ya da tepsi simgesi, Mac trackpad'inde üç ya da dört parmakla kaydırma.
+- **Açmanın birçok yolu.** Klavye kısayolu, sıcak köşe, menü çubuğu ya da tepsi simgesi, Mac trackpad'inde üç ya da dört parmakla kaydırma. Windows'ta üç parmak hareketini Berth kendisi tanır, Windows'un hareketini beklemez.
+- **Bir uygulamanın pencereleri (Windows).** Üç parmakla aşağı kaydırınca ya da Ctrl+Alt+Shift+↓ ile öndeki uygulamanın tüm pencereleri büyük bir ızgarada görünür; Mac'teki App Exposé gibi.
 - **Dock ve görev çubuğu önizlemeleri.** Bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki pencereleri görünür.
-- **Mac ↔ Windows köprüsü.** Microsoft'un Windows App'i (Uzak Masaüstü) ile bir Windows bilgisayara bağlıyken Mac trackpad'inde yukarı kaydırmak, o bilgisayardaki Berth'i açar.
+- **Mac ↔ Windows köprüsü.** Microsoft'un Windows App'i (Uzak Masaüstü) ile bir Windows bilgisayara bağlıyken Mac trackpad'inde yukarı kaydırmak o bilgisayardaki Berth'i açar, aşağı kaydırmak oradaki öndeki uygulamanın pencerelerini gösterir. Bir Mac'e birden çok bilgisayar bağlanabilir.
 - **Gizlilik.** Hesap yok, analiz yok. Mac–Windows köprüsünü açmadıkça ağ bağlantısı da yok. Bkz. [gizlilik](store/privacy.md).
 
 <table><tr>

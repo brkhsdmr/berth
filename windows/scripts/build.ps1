@@ -14,7 +14,7 @@ $assets = Join-Path $out 'assets'
 New-Item -ItemType Directory -Force -Path $out, $assets | Out-Null
 $opt = if ($Config -eq 'Release') { '/O2 /GL /MT' } else { '/Od /Zi /MTd /DDEBUG' }
 $link = if ($Config -eq 'Release') { '/LTCG /OPT:REF /OPT:ICF' } else { '/DEBUG' }
-$src = "src\core\layout.cpp src\app\vdesktop.cpp src\app\source.cpp src\app\taskbar.cpp src\app\settings.cpp src\app\icon.cpp src\app\layouts.cpp src\app\remote.cpp src\app\text.cpp src\app\main.cpp"
+$src = "src\core\layout.cpp src\app\vdesktop.cpp src\app\source.cpp src\app\taskbar.cpp src\app\settings.cpp src\app\icon.cpp src\app\layouts.cpp src\app\remote.cpp src\app\touchpad.cpp src\app\text.cpp src\app\main.cpp"
 $exe = Join-Path $out 'Berth.exe'
 Push-Location $root
 try {

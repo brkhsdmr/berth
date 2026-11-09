@@ -104,6 +104,7 @@ void RemoteLink::run(std::wstring host, std::string token) {
                     }
                     else if (line == "DENIED") { denied_ = true; setStatus(tx(L"Kod kabul edilmedi; Mac'teki kodu girin.", L"Code rejected; enter the code shown on the Mac.")); }
                     else if (line == "TOGGLE" && notify_) PostMessageW(notify_, message_, 0, 0);
+                    else if (line == "APPWINDOWS" && notify_) PostMessageW(notify_, message_, 1, 0); // Mac'te aşağı kaydırma.
                 }
             }
             if (socket_.exchange(~0ull) != ~0ull) closesocket(s);

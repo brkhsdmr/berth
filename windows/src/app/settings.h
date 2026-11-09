@@ -16,6 +16,9 @@ struct Settings {
     bool taskbarPreview = true;
     /// Sahnede aşağı kaydırınca sabit olmayan uygulamaların pencereleri kendi hücrelerinde görünür.
     bool otherAppsScroll = false;
+    /// Dokunmatik yüzeyde üç parmak hareketlerini Berth tanır (Windows'un hareketinden bağımsız):
+    /// yukarı sahne, aşağı öndeki uygulamanın pencereleri.
+    bool touchpadGestures = true;
     /// Mac'teki uygulamanın adı (Tailscale ya da yerel ağ) ve eşleştirme kodu; boşsa bağlanılmaz.
     std::wstring remoteHost, remoteToken;
     /// Ayarlardan "Bağlantıyı kes" denince false; "Bağlan" ile yeniden açılır.

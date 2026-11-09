@@ -39,6 +39,13 @@ Davranış Mac'teki gibidir (docs/mac-notes.md). Windows'a özgü olanlar:
 - **Akıcılık.** Tekerlek hedefi değiştirir, 15 ms'lik zamanlayıcı yumuşatır. Bulanık duvar kağıdı bir kez çizilip saklanır, yoksa her karede yeniden hesaplanırdı.
 - **Sürükleme.** Önizleme şeritte bir masaüstüne bırakılırsa pencere taşınır, hücrelerin arasına bırakılırsa sıra değişir. Etiket ve boş hücre yalnızca sıralar.
 
+## Dokunmatik yüzey ve uygulama pencereleri
+
+- **Hareketi Berth tanır.** Eskiden Windows'un üç parmak hareketi "Özel kısayol"a atanıyordu; Windows hareketin bittiğini bekleyip tuş gönderdiği için yavaştı. Artık hassas dokunmatik yüzeyin ham dokunmaları Raw Input ile okunur (`touchpad.cpp`, digitizer 0x0D/0x05, `RIDEV_INPUTSINK`) ve `SwipeRecognizer` (`core/gesture.h`, testli, Mac'teki `MultiFingerSwipe`'ın karşılığı) yönü bulur. Windows'un kendi üç parmak hareketleri "Hiçbir şey" yapılmazsa ikisi birlikte çalışır; ayarlar kartı bunu söyler.
+- **Rapor ayrıştırma.** Her parmak bir bağlantı koleksiyonunda; X/Y aralığı değer yeteneklerinden okunur. Karma kipte bir çerçeve birden çok rapora bölünür, ilk raporun parmak sayısı (0x54) çerçevenin sonunu belirler. Parmaklar kalkınca boş çerçeve gelmezse 250 ms sessizlik oturumu bitirir.
+- **Uygulama pencereleri.** Yukarı sahne, aşağı öndeki uygulamanın pencereleri (`focusApp_`, `layoutAppWindows`, yerleşim `exposeFrames`). Uygulama, öndeki pencerenin süreciyle bulunur; öndeki pencere yoksa (oturum bağlı değil, kilitli) hiçbir şey açılmaz. Kısayol Ctrl+Alt+Shift+↓; Mac köprüsünden "APPWINDOWS" satırı aynı işi yapar.
+- **Doğrulama.** Kısayol ve Mac köprüsü dokunmatik yüzeyi olmayan bir Windows 11 masaüstünde denendi. Dokunmatik yüzeyli bir cihazda henüz denenmedi.
+
 ## Windows 11 25H2 (26200) üzerinde ölçülenler
 
 - DWM önizlemesi başka masaüstündeki ve küçültülmüş pencerelerde de görüntü veriyor, izin istemiyor.

@@ -4,7 +4,8 @@
 /// ilerleme yukarı kaydırmada artı, aşağı kaydırmada eksidir ve işareti ilk olaydan bellidir.
 public struct SwipeGestureInterpreter: Sendable {
     public enum Decision: Equatable, Sendable { case pass, swallow }
-    public enum Action: Equatable, Sendable { case none, open, close }
+    /// `down`: sahne kapalıyken aşağı kaydırma (yalnızca `capturesDown` ile; uzak masaüstüne gider).
+    public enum Action: Equatable, Sendable { case none, open, close, down }
 
     public static let verticalAxis: Int64 = 2
     /// Parmak yolunun yaklaşık üçte biri: kazara dokunmalarda tetiklenmez, geç de kalmaz.
@@ -16,18 +17,23 @@ public struct SwipeGestureInterpreter: Sendable {
     private var state = State.idle
     private var fired = false
     private var opensOnUp = true
+    private var takesDown = false
 
     public init() {}
 
     /// - Parameter overlayOpen: Sahne açık mı. Kapalıyken aşağı kaydırma macOS'a bırakılır
     ///   (App Exposé); açıkken aşağı kaydırma sahneyi kapatır.
-    public mutating func handle(axis: Int64, phase: Int64, progress: Double, velocity: Double, overlayOpen: Bool) -> (Decision, Action) {
+    /// - Parameter capturesDown: Sahne kapalıyken aşağı kaydırma da alınır ve `down` olur
+    ///   (Windows App oturumu öndeyken o bilgisayarın uygulama pencereleri).
+    public mutating func handle(axis: Int64, phase: Int64, progress: Double, velocity: Double, overlayOpen: Bool,
+                                capturesDown: Bool = false) -> (Decision, Action) {
         guard axis == Self.verticalAxis else { return (.pass, .none) }
 
         if phase == 1 {
             fired = false
             opensOnUp = !overlayOpen
-            state = (progress < 0 && !overlayOpen) ? .passing : .capturing
+            takesDown = capturesDown && !overlayOpen
+            state = (progress < 0 && !overlayOpen && !takesDown) ? .passing : .capturing
             return (state == .capturing ? .swallow : .pass, .none)
         }
 
@@ -53,7 +59,7 @@ public struct SwipeGestureInterpreter: Sendable {
     }
 
     private func action(forProgress progress: Double) -> Action {
-        if opensOnUp { return progress > 0 ? .open : .none }
+        if opensOnUp { return progress > 0 ? .open : (progress < 0 && takesDown ? .down : .none) }
         return progress < 0 ? .close : .none
     }
 }

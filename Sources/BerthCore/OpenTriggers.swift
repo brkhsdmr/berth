@@ -48,7 +48,7 @@ public enum ScreenCorner: String, CaseIterable, Sendable {
 /// tüm parmaklar kalkınca biter; oturumda bir kez tetiklenir. Seçilenden fazla parmak değen oturum
 /// (beş parmakla sıkıştırma gibi) yok sayılır.
 public struct MultiFingerSwipe: Sendable {
-    public enum Action: Equatable, Sendable { case none, open, close }
+    public enum Action: Equatable, Sendable { case none, open, close, down }
 
     /// Trackpad yüksekliğinin oranı: Dock hareketinin eşiğine yakın.
     public static let distance = 0.12
@@ -65,7 +65,8 @@ public struct MultiFingerSwipe: Sendable {
     /// Oturumda şimdiye kadar değen en fazla parmak.
     public var sessionFingers: Int { maxCount }
 
-    public mutating func handle(_ points: [CGPoint], overlayOpen: Bool) -> Action {
+    /// `capturesDown`: sahne kapalıyken aşağı kaydırma `down` olur (bkz. SwipeGestureInterpreter).
+    public mutating func handle(_ points: [CGPoint], overlayOpen: Bool, capturesDown: Bool = false) -> Action {
         guard !points.isEmpty else {
             baseline = nil
             maxCount = 0
@@ -92,6 +93,7 @@ public struct MultiFingerSwipe: Sendable {
         fired = true
         if dy > 0, !overlayOpen { return .open }
         if dy < 0, overlayOpen { return .close }
+        if dy < 0, capturesDown { return .down }
         return .none
     }
 }

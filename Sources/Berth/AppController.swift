@@ -152,6 +152,11 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             self.open()
         }
         trackpadGesture.onClose = { [weak self] in self?.close() }
+        trackpadGesture.onDown = { [weak self] in
+            guard let self, !self.isOpen else { return }
+            // Yakalama kararı bir an önce verildi; oturum o arada değiştiyse hareket macOS'a geri döner.
+            if !self.forwardToRemoteSession(.appWindows) { AppExpose.show() }
+        }
         settings.onTrackpadFingersChange = { [weak self] count in self?.trackpadGesture.setFingers(count) }
         trackpadGesture.setFingers(settings.trackpadFingers)
         hotCorner.onTrigger = { [weak self] in self?.toggle() }
@@ -184,7 +189,10 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         installObservers()
         layoutStore.onChange = { [weak self] in self?.registerLayoutHotKeys() }
         Compatibility.reportIfBroken()
-        remoteBridge.onClientsChange = { [weak self] names in self?.settings.connectedRemotes = names }
+        remoteBridge.onClientsChange = { [weak self] names in
+            self?.settings.connectedRemotes = names
+            self?.refreshRemoteDownCapture()
+        }
         settings.onRemoteBridgeChange = { [weak self] enabled in
             guard let self else { return }
             if enabled { self.remoteBridge.start(token: self.settings.remoteToken, blocked: self.settings.blockedRemotes) } else { self.remoteBridge.stop() }
@@ -330,6 +338,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             if activated?.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
             MainActor.assumeIsolated {
                 guard let self else { return }
+                self.refreshRemoteDownCapture()
                 self.dockPreview.hide()
                 self.fullScreenDock.hide()
                 if self.isOpen, Date() >= self.ignoreActivationUntil { self.close() }
@@ -711,26 +720,58 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     /// Windows App'te ayarlardaki adı taşıyan oturum öndeyse hareket oradaki uygulamaya gider.
     /// Tuşla iletmek çalışmadı (Windows App yapay değiştirici tuşları geçirmiyor); Windows'taki
     /// uygulama bu Mac'e bağlanır ve komut o bağlantıdan gider (`RemoteBridge`).
-    private func forwardToRemoteSession() -> Bool {
-        guard settings.remoteBridgeEnabled,
-              let app = NSWorkspace.shared.frontmostApplication,
-              app.bundleIdentifier == "com.microsoft.rdc.macos",
-              let title = WindowActivator.focusedWindowTitle(pid: app.processIdentifier)
-        else { return false }
+    private func forwardToRemoteSession(_ command: RemoteBridge.Command = .toggle) -> Bool {
+        guard let title = frontRemoteSessionTitle() else { return false }
         let names = settings.remoteSessionList
         if names.isEmpty {
             // Adlar verilmemişse: yalnızca bu Mac'e bağlı bir Windows'un oturumu. Uygulamanın
             // olmadığı oturumlarda (başka bir bilgisayar) hareket Mac'in sahnesini açar.
-            guard remoteBridge.sendToggle(matchingTitle: title, aliases: settings.remoteSessionAliases) else { return false }
+            guard remoteBridge.send(command, matchingTitle: title, aliases: settings.remoteSessionAliases) else { return false }
         } else {
             guard names.contains(where: { title.localizedCaseInsensitiveContains($0) }) else { return false }
-            guard remoteBridge.sendToggle() else {
+            guard remoteBridge.send(command) else {
                 Toast.show(tx("Windows'taki Berth bu Mac'e bağlı değil.", "Berth on Windows isn't connected to this Mac."))
                 return true
             }
         }
-        DockTrace.log("hareket RDP oturumuna iletildi: \(title)")
+        DockTrace.log("hareket RDP oturumuna iletildi (\(command.rawValue)): \(title)")
         return true
+    }
+
+    /// Windows App öndeyse öndeki oturumun başlığı.
+    private func frontRemoteSessionTitle() -> String? {
+        guard settings.remoteBridgeEnabled,
+              let app = NSWorkspace.shared.frontmostApplication,
+              app.bundleIdentifier == Self.windowsAppID
+        else { return nil }
+        return WindowActivator.focusedWindowTitle(pid: app.processIdentifier)
+    }
+
+    private static let windowsAppID = "com.microsoft.rdc.macos"
+    private var remoteCaptureTimer: Timer?
+
+    /// Aşağı kaydırma, öndeki oturum Berth'ün bağlı olduğu bir bilgisayarsa alınır; değilse
+    /// App Exposé macOS'ta kalır. Karar hareketten önce verilmeli: Windows App öndeyken oturumlar
+    /// arasında geçiş uygulama değişikliği sayılmadığı için yarım saniyede bir yenilenir.
+    private func refreshRemoteDownCapture() {
+        let windowsAppInFront = settings.remoteBridgeEnabled && !settings.connectedRemotes.isEmpty
+            && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.windowsAppID
+        var captures = false
+        if windowsAppInFront, let title = frontRemoteSessionTitle() {
+            let names = settings.remoteSessionList
+            captures = names.isEmpty
+                ? remoteBridge.reaches(matchingTitle: title, aliases: settings.remoteSessionAliases)
+                : names.contains(where: { title.localizedCaseInsensitiveContains($0) })
+        }
+        trackpadGesture.setCapturesDown(captures)
+        if windowsAppInFront, remoteCaptureTimer == nil {
+            remoteCaptureTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshRemoteDownCapture() }
+            }
+        } else if !windowsAppInFront {
+            remoteCaptureTimer?.invalidate()
+            remoteCaptureTimer = nil
+        }
     }
 
     private func perform(_ action: DockAppAction, on app: SceneApp) {

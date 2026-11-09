@@ -10,7 +10,8 @@ import BerthCore
 ///
 /// Hareket Dock'a giden belgesiz bir olay olarak geliyor; CGEventTap onu Dock'tan önce görüp
 /// yutabiliyor (ölçüldü, SIP gerekmiyor, Erişilebilirlik izni yeterli). Yalnızca dikey hareket
-/// alınır: alan geçişleri (yatay) ve App Exposé (aşağı) macOS'ta kalır.
+/// alınır: alan geçişleri (yatay) ve App Exposé (aşağı) macOS'ta kalır. Tek istisna: Berth'ün
+/// bağlı olduğu bir Windows App oturumu öndeyken aşağı kaydırma da alınır ve o bilgisayara gider.
 ///
 /// Geri çağrı ayrı bir iş parçacığında çalışır: ana iş parçacığı meşgulken olay beklerse macOS
 /// tap'i kapatır. Uygulama çökerse ya da seçenek kapatılırsa tap kalkar ve Mission Control kendiliğinden
@@ -18,9 +19,12 @@ import BerthCore
 final class TrackpadGestureTap: @unchecked Sendable {
     var onOpen: (@MainActor () -> Void)?
     var onClose: (@MainActor () -> Void)?
+    /// Sahne kapalıyken aşağı kaydırma; yalnızca `setCapturesDown(true)` iken gelir.
+    var onDown: (@MainActor () -> Void)?
 
     private let lock = NSLock()
     private var overlayOpen = false
+    private var capturesDown = false
     private var isRunning = false
     private var runLoop: CFRunLoop?
     private var thread: Thread?
@@ -41,6 +45,20 @@ final class TrackpadGestureTap: @unchecked Sendable {
         lock.lock()
         overlayOpen = open
         lock.unlock()
+    }
+
+    /// Aşağı kaydırma macOS'a (App Exposé) bırakılmaz, `onDown` olur. Ana iş parçacığı günceller;
+    /// hareket sırasında soru sorulmaz (tap beklerse macOS onu kapatır).
+    func setCapturesDown(_ value: Bool) {
+        lock.lock()
+        capturesDown = value
+        lock.unlock()
+    }
+
+    fileprivate var downIsCaptured: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return capturesDown
     }
 
     /// 0 kapatır.
@@ -66,8 +84,10 @@ final class TrackpadGestureTap: @unchecked Sendable {
 
     func start() {
         touches.overlayIsOpen = { [weak self] in self?.overlayIsOpen ?? false }
+        touches.capturesDown = { [weak self] in self?.downIsCaptured ?? false }
         touches.onOpen = { [weak self] in self?.onOpen?() }
         touches.onClose = { [weak self] in self?.onClose?() }
+        touches.onDown = { [weak self] in self?.onDown?() }
         touches.start()
         lock.lock()
         defer { lock.unlock() }
@@ -164,7 +184,8 @@ final class TrackpadGestureTap: @unchecked Sendable {
             phase: phase,
             progress: event.getDoubleValueField(Self.field(124)),
             velocity: event.getDoubleValueField(Self.field(129)),
-            overlayOpen: overlayIsOpen
+            overlayOpen: overlayIsOpen,
+            capturesDown: downIsCaptured
         )
 
         switch action {
@@ -174,6 +195,8 @@ final class TrackpadGestureTap: @unchecked Sendable {
             DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onOpen?() } }
         case .close:
             DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onClose?() } }
+        case .down:
+            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onDown?() } }
         }
         return decision == .swallow ? nil : Unmanaged.passUnretained(event)
     }
@@ -187,7 +210,9 @@ final class TrackpadGestureTap: @unchecked Sendable {
 final class TrackpadTouches: @unchecked Sendable {
     var onOpen: (@MainActor () -> Void)?
     var onClose: (@MainActor () -> Void)?
+    var onDown: (@MainActor () -> Void)?
     var overlayIsOpen: (() -> Bool)?
+    var capturesDown: (() -> Bool)?
 
     private typealias CreateList = @convention(c) () -> Unmanaged<CFArray>?
     private typealias FrameCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, Int32, Double, Int32) -> Int32
@@ -290,10 +315,11 @@ final class TrackpadTouches: @unchecked Sendable {
             }
         }
         let open = overlayIsOpen?() ?? false
+        let takesDown = capturesDown?() ?? false
 
         lock.lock()
         let fingersBefore = recognizer.sessionFingers
-        let action = recognizer.handle(points, overlayOpen: open)
+        let action = recognizer.handle(points, overlayOpen: open, capturesDown: takesDown)
         let handledByDock = dockHandled
         if points.isEmpty {
             if fingersBefore >= 3, let start = sessionStart {
@@ -317,6 +343,8 @@ final class TrackpadTouches: @unchecked Sendable {
             }
         case .close:
             DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onClose?() } }
+        case .down:
+            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onDown?() } }
         }
     }
 }

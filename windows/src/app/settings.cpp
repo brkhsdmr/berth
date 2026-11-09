@@ -85,7 +85,7 @@ constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersio
 constexpr const wchar_t* kRunValue = L"Berth";
 
 enum Control {
-    IdShortcutOn = 100, IdShortcut, IdCornerDelay, IdTouchOpen, IdTaskbar, IdOtherAppsScroll, IdLaunch, IdLanguage,
+    IdShortcutOn = 100, IdShortcut, IdCornerDelay, IdTouchOpen, IdTaskbar, IdOtherAppsScroll, IdLaunch, IdLanguage, IdTouchGestures,
     IdPins, IdPinUp, IdPinDown, IdPinSmall, IdPinMedium, IdPinLarge, IdPinRemove, IdPinAdd,
     IdRemoteHost, IdRemoteToken, IdRemoteApply,
     IdLayouts, IdLayoutRestore, IdLayoutRemove, IdLayoutName, IdLayoutRename, IdLayoutSave, IdLayoutKey, IdLayoutKeyClear,
@@ -128,6 +128,7 @@ Settings Settings::load() {
         else if (key == L"cornerDelayMs" && value >= 0) s.cornerDelayMs = value;
         else if (key == L"taskbarPreview") s.taskbarPreview = value != 0;
         else if (key == L"otherAppsScroll") s.otherAppsScroll = value != 0;
+        else if (key == L"touchpadGestures") s.touchpadGestures = value != 0;
         else if (key == L"language" && value >= 0 && value <= 2) s.language = value;
     }
     return s;
@@ -142,6 +143,7 @@ void Settings::save() const {
         << L"cornerDelayMs=" << cornerDelayMs << L"\n"
         << L"taskbarPreview=" << (taskbarPreview ? 1 : 0) << L"\n"
         << L"otherAppsScroll=" << (otherAppsScroll ? 1 : 0) << L"\n"
+        << L"touchpadGestures=" << (touchpadGestures ? 1 : 0) << L"\n"
         << L"remoteHost=" << remoteHost << L"\n"
         << L"remoteToken=" << remoteToken << L"\n"
         << L"remoteEnabled=" << (remoteEnabled ? 1 : 0) << L"\n"
@@ -630,15 +632,19 @@ void SettingsWindow::buildPage() {
         for (auto& name : kDelayNames) SendMessageW(delay, CB_ADDSTRING, 0, LPARAM(tx(name[0], name[1])));
 
         bool touchpad = hasTouchpad();
-        card(320, 84, 0xE7C9, tx(L"Dokunmatik yüzey", L"Touchpad"),
-             touchpad ? tx(L"Üç ya da dört parmakla yukarı kaydırmayı Windows işler. Gelişmiş hareketler'de bu hareketi \"Özel kısayol\" yapıp yukarıdaki kısayola ata.",
-                           L"Windows handles three- and four-finger swipes. In Advanced gestures, set the swipe up to \"Custom shortcut\" and assign the shortcut above.")
-                      : tx(L"Bu bilgisayarda dokunmatik yüzey yok. Uzak masaüstüyle bağlanınca Mac'in trackpad'i de fare olarak gelir.",
-                           L"This PC has no touchpad. Over Remote Desktop, a Mac's trackpad also arrives as a mouse."),
-             touchpad ? 170 : 0);
-        if (touchpad) addButton(IdTouchOpen, tx(L"Ayarları aç", L"Open settings"), ButtonKind::Normal, right - 150, 320 + 26, 150);
+        card(320, touchpad ? 144 : 84, 0xE7C9, tx(L"Dokunmatik yüzey", L"Touchpad"),
+             touchpad ? tx(L"Üç parmakla yukarı kaydırma sahneyi, aşağı kaydırma öndeki uygulamanın pencerelerini açar. Windows'ta Üç parmak hareketleri'ni \"Hiçbir şey\" yapın, yoksa ikisi birlikte çalışır. Klavyeden: Ctrl+Alt+Shift+↓.",
+                           L"Swiping up with three fingers opens the scene, swiping down shows the front app's windows. In Windows, set Three-finger gestures to \"Nothing\", or both will run. From the keyboard: Ctrl+Alt+Shift+↓.")
+                      : tx(L"Bu bilgisayarda dokunmatik yüzey yok. Öndeki uygulamanın pencereleri: Ctrl+Alt+Shift+↓. Uzak masaüstünde Mac'in trackpad'iyle aşağı kaydırmak da açar.",
+                           L"This PC has no touchpad. The front app's windows: Ctrl+Alt+Shift+↓. Over Remote Desktop, swiping down on the Mac's trackpad also opens them."),
+             0);
+        if (touchpad) {
+            // Metin üç satır; düğmeler altında.
+            addButton(IdTouchOpen, tx(L"Windows ayarlarını aç", L"Open Windows settings"), ButtonKind::Normal, right - 104 - 16 - 200, 320 + 100, 200);
+            addButton(IdTouchGestures, L"", ButtonKind::Toggle, right - 104, 320 + 102, 104, 28);
+        }
 
-        card(412, 76, 0xE8A7, tx(L"Görev çubuğu simgesi", L"Taskbar icon"),
+        card(touchpad ? 476 : 416, 76, 0xE8A7, tx(L"Görev çubuğu simgesi", L"Taskbar icon"),
              tx(L"Görev çubuğuna sabitlenmiş simgeye ya da tepsi simgesine tıklamak sahneyi açar, açıksa kapatır.",
                 L"Clicking the pinned taskbar icon or the tray icon opens the scene, or closes it if open."));
         break;
@@ -1068,8 +1074,9 @@ void SettingsWindow::sync() {
     setToggled(toggles_, IdShortcutOn, settings_.shortcutEnabled);
     setToggled(toggles_, IdTaskbar, settings_.taskbarPreview);
     setToggled(toggles_, IdOtherAppsScroll, settings_.otherAppsScroll);
+    setToggled(toggles_, IdTouchGestures, settings_.touchpadGestures);
     if (page_ == 4) setToggled(toggles_, IdLaunch, launch::enabled());
-    for (int id : {IdShortcutOn, IdTaskbar, IdOtherAppsScroll, IdLaunch})
+    for (int id : {IdShortcutOn, IdTaskbar, IdOtherAppsScroll, IdLaunch, IdTouchGestures})
         if (HWND c = GetDlgItem(hwnd_, id)) InvalidateRect(c, nullptr, FALSE);
 
     if (HWND recorder = GetDlgItem(hwnd_, IdShortcut)) {
@@ -1181,6 +1188,9 @@ void SettingsWindow::command(int id, int code) {
         break;
     case IdOtherAppsScroll:
         settings_.otherAppsScroll = !settings_.otherAppsScroll;
+        break;
+    case IdTouchGestures:
+        settings_.touchpadGestures = !settings_.touchpadGestures;
         break;
     case IdLaunch: {
         bool on = !isToggled(toggles_, IdLaunch);

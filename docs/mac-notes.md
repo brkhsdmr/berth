@@ -94,6 +94,10 @@ Ayarlar > Düzenler ya da menü çubuğu simgesine sağ tık: bu alanlardaki gö
 
 Ayarlar > Açılış > Uzak masaüstü açılınca uygulama 47654 numaralı TCP kapısını dinler (yalnızca Tailscale ve yerel ağ adresleri). Windows'taki uygulamaya bu Mac'in adı ve eşleştirme kodu girilince Windows bağlanır. Windows App'te o oturum öndeyken yukarı kaydırma, Windows'taki sahneyi açar ya da kapatır. Bağlantıyı Windows açtığı için orada güvenlik duvarı kuralı gerekmez. Tuşla iletmek denendi: Windows App yapay değiştirici tuşları geçirmiyor.
 
+Birden çok bilgisayar bağlanabilir. Hareket, öndeki oturumun başlığında bilgisayarın adı ya da ayarlarda ona yazılan oturum adı geçen bilgisayara gider. Ayarlardan bağlantısı kesilen bilgisayara "BLOCKED" denir, izin verilene kadar bağlanamaz.
+
+Aşağı kaydırma normalde macOS'un App Exposé'sine bırakılır. Bağlı bir bilgisayarın oturumu öndeyken alınır ve "APPWINDOWS" olarak gider. Karar hareketten önce verilmeli (tap iş parçacığı beklerse macOS onu kapatır): Windows App öndeyken yarım saniyede bir yenilenen bir bayrak tutulur. Hareket anında oturum değişmişse `CoreDockSendNotification` ile App Exposé açılır.
+
 ## Bellek
 
 Program kodu ~2 MB. Asıl yük görüntüler: bulanık zemin küçük görüntüden üretilir (katman büyütür), pencere görüntüleri sahne kapandıktan 30 sn sonra bırakılır. Ölçüm (release, iki ekran): boşta ~29 MB, sahne açıkken ~60 MB; önce 107 MB'tı. Dili değiştirmek bunu değiştirmez: Swift de C++ gibi makine koduna derlenir, fark birkaç MB.

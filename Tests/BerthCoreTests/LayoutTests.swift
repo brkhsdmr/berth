@@ -492,12 +492,12 @@ final class WindowNamingTests: XCTestCase {
 }
 
 final class SwipeGestureTests: XCTestCase {
-    private func run(_ steps: [(Int64, Double, Double)], open: Bool = false, axis: Int64 = 2) -> (decisions: [SwipeGestureInterpreter.Decision], actions: [SwipeGestureInterpreter.Action]) {
+    private func run(_ steps: [(Int64, Double, Double)], open: Bool = false, axis: Int64 = 2, capturesDown: Bool = false) -> (decisions: [SwipeGestureInterpreter.Decision], actions: [SwipeGestureInterpreter.Action]) {
         var interpreter = SwipeGestureInterpreter()
         var decisions: [SwipeGestureInterpreter.Decision] = []
         var actions: [SwipeGestureInterpreter.Action] = []
         for (phase, progress, velocity) in steps {
-            let (decision, action) = interpreter.handle(axis: axis, phase: phase, progress: progress, velocity: velocity, overlayOpen: open)
+            let (decision, action) = interpreter.handle(axis: axis, phase: phase, progress: progress, velocity: velocity, overlayOpen: open, capturesDown: capturesDown)
             decisions.append(decision)
             if action != .none { actions.append(action) }
         }
@@ -518,6 +518,15 @@ final class SwipeGestureTests: XCTestCase {
         let result = run(down)
         XCTAssertTrue(result.actions.isEmpty)
         XCTAssertTrue(result.decisions.allSatisfy { $0 == .pass })
+    }
+
+    func testSwipeDownIsTakenForRemoteSession() {
+        let result = run(down, capturesDown: true)
+        XCTAssertEqual(result.actions, [.down])
+        XCTAssertTrue(result.decisions.allSatisfy { $0 == .swallow })
+        // Yukarı kaydırma etkilenmez; sahne açıkken aşağı yine kapatır.
+        XCTAssertEqual(run(up, capturesDown: true).actions, [.open])
+        XCTAssertEqual(run(down, open: true, capturesDown: true).actions, [.close])
     }
 
     func testSwipeDownClosesWhenOpen() {
@@ -603,6 +612,13 @@ final class OpenTriggerTests: XCTestCase {
         XCTAssertEqual(swipe(3, count: 3, dy: 0.08), [])
         XCTAssertEqual(swipe(3, count: 3, dy: 0.2, dx: 0.4), [])
         XCTAssertEqual(swipe(3, count: 3, dy: -0.3), [])
+    }
+
+    func testDownGoesToRemoteSessionWhenCaptured() {
+        var recognizer = MultiFingerSwipe(fingers: 3)
+        let three = { (y: CGFloat) in (0..<3).map { CGPoint(x: 0.4 + CGFloat($0) * 0.1, y: y) } }
+        _ = recognizer.handle(three(0.6), overlayOpen: false, capturesDown: true)
+        XCTAssertEqual(recognizer.handle(three(0.3), overlayOpen: false, capturesDown: true), .down)
     }
 
     func testDownClosesWhenOpen() {

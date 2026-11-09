@@ -207,3 +207,44 @@ Rect snapFrame(SnapPosition position, const Rect& a) {
     default: return a;
     }
 }
+
+std::vector<Rect> exposeFrames(const Rect& area, const std::vector<double>& aspects, double gap) {
+    std::vector<Rect> frames;
+    const size_t n = aspects.size();
+    if (n == 0 || area.w <= 0 || area.h <= 0) return frames;
+    auto fit = [](double aspect, double w, double h) {
+        aspect = aspect > 0 ? aspect : 1.6;
+        return w / h > aspect ? std::pair<double, double>{h * aspect, h} : std::pair<double, double>{w, w / aspect};
+    };
+    // Kapladığı toplam alanı en büyük olan sütun sayısı; eşitlikte az sütun (büyük hücre).
+    size_t bestColumns = 1;
+    double bestArea = -1;
+    for (size_t columns = 1; columns <= n; ++columns) {
+        size_t rows = (n + columns - 1) / columns;
+        double cw = (area.w - double(columns - 1) * gap) / double(columns);
+        double ch = (area.h - double(rows - 1) * gap) / double(rows);
+        if (cw <= 0 || ch <= 0) break;
+        double total = 0;
+        for (double aspect : aspects) {
+            auto [w, h] = fit(aspect, cw, ch);
+            total += w * h;
+        }
+        if (total > bestArea + 0.5) {
+            bestArea = total;
+            bestColumns = columns;
+        }
+    }
+    const size_t columns = bestColumns, rows = (n + columns - 1) / columns;
+    const double cw = (area.w - double(columns - 1) * gap) / double(columns);
+    const double ch = (area.h - double(rows - 1) * gap) / double(rows);
+    for (size_t i = 0; i < n; ++i) {
+        size_t row = i / columns, column = i % columns;
+        size_t inRow = row + 1 < rows ? columns : n - row * columns;
+        double rowWidth = double(inRow) * cw + double(inRow - 1) * gap;
+        double x = area.x + (area.w - rowWidth) / 2 + double(column) * (cw + gap);
+        double y = area.y + double(row) * (ch + gap);
+        auto [w, h] = fit(aspects[i], cw, ch);
+        frames.push_back({x + (cw - w) / 2, y + (ch - h) / 2, w, h});
+    }
+    return frames;
+}

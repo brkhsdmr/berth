@@ -12,7 +12,8 @@
 class RemoteLink {
 public:
     ~RemoteLink();
-    /// Boş adres bağlantıyı kapatır. `notify` penceresine her komutta `message` gönderilir.
+    /// Boş adres bağlantıyı kapatır. `notify` penceresine her komutta `message` gönderilir:
+    /// wParam 0 sahne (TOGGLE), 1 öndeki uygulamanın pencereleri (APPWINDOWS).
     void configure(const std::wstring& host, const std::wstring& token, HWND notify, UINT message);
     std::wstring status() const;
 
