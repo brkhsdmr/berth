@@ -1239,6 +1239,11 @@ final class SceneView: NSView {
     }
 
     private func target(at point: CGPoint) -> Target? {
+        // Arama sonuçları paneli önizlemelerin üstündedir: içindeki tıklama alttaki pencereye
+        // geçmez, simgeler arasındaki boşluk da hiçbir şey seçmez.
+        if let resultsLayer, resultsLayer.frame.contains(point) {
+            return hits.last { $0.rect.contains(point) && resultsLayer.frame.contains($0.rect) }?.target
+        }
         if fanApp != nil, let fanLayer, fanLayer.frame.contains(point) {
             if let id = windowID(of: hovered), fanTiles[id] != nil, let target = targetOnHoveredTile(at: point) {
                 return target
