@@ -301,19 +301,33 @@ void TaskbarPreview::show(const Button& button) {
 
     // Windows'un kartlarına yakın ölçüler.
     const double cardW = 168 * s, caption = 24 * s, thumbH = 96 * s, gap = 6 * s, pad = 8 * s, header = 6 * s, section = 20 * s;
-    double maxW = (info.rcWork.right - info.rcWork.left) - 40 * s;
-    int columns = std::max(1, std::min({int(others.size()), 5, int((maxW - 2 * pad + gap) / (cardW + gap))}));
-    size_t count = std::min(others.size(), size_t(columns * 2));
-    int rows = int((count + columns - 1) / columns);
     double cellH = caption + thumbH;
+    // Alttaki ya da üstteki çubukta kartlar yan yana (en çok 5 sütun, 2 satır). Yandaki çubukta
+    // Windows'un kendi önizlemesi gibi alt alta: tek sütun, ekranın yüksekliğine sığdığı kadar.
+    const TaskbarEdge edge = edgeOf(button.rect, info.rcMonitor);
+    const bool side = edge == TaskbarEdge::Left || edge == TaskbarEdge::Right;
+    int columns = 1;
+    size_t count = 0;
+    if (side) {
+        double maxH = (info.rcWork.bottom - info.rcWork.top) - 16 * s - (header + section + pad);
+        int fit = std::max(1, int((maxH + gap) / (cellH + gap)));
+        count = std::min(others.size(), size_t(std::min(fit, 6)));
+    } else {
+        double maxW = (info.rcWork.right - info.rcWork.left) - 40 * s;
+        columns = std::max(1, std::min({int(others.size()), 5, int((maxW - 2 * pad + gap) / (cardW + gap))}));
+        count = std::min(others.size(), size_t(columns * 2));
+    }
+    int rows = int((count + columns - 1) / columns);
     width_ = int(std::max(columns * cardW + (columns - 1) * gap + 2 * pad, 200 * s));
     height_ = int(header + section + rows * cellH + (rows - 1) * gap + pad);
     sectionTop_ = header;
+    // Panel en dar hâlinde kartlardan geniş kalabilir (tek sütun): kartlar ortalanır.
+    const double left = (width_ - (columns * cardW + (columns - 1) * gap)) / 2;
 
     for (size_t i = 0; i < count; ++i) {
         Card card;
         card.window = others[i];
-        double x = pad + (i % columns) * (cardW + gap), y = header + section + (i / columns) * (cellH + gap);
+        double x = left + (i % columns) * (cardW + gap), y = header + section + (i / columns) * (cellH + gap);
         card.frame = {x, y, cardW, cellH};
         Rect area{x + 4 * s, y + caption, cardW - 8 * s, thumbH - 4 * s};
         double aspect = others[i].aspect();
@@ -328,7 +342,7 @@ void TaskbarPreview::show(const Button& button) {
     const RECT& work = info.rcWork;
     double centerX = (b.left + b.right) / 2.0 - width_ / 2.0, centerY = (b.top + b.bottom) / 2.0 - height_ / 2.0;
     double x = centerX, y = 0;
-    switch (edgeOf(b, info.rcMonitor)) {
+    switch (edge) {
     case TaskbarEdge::Bottom: y = b.top - height_ - (kNativePreviewHeight + kNativePreviewGap) * s; break;
     case TaskbarEdge::Top: y = b.bottom + (kNativePreviewHeight + kNativePreviewGap) * s; break;
     case TaskbarEdge::Left: x = b.right + (kNativePreviewWidth + kNativePreviewGap) * s; y = centerY; break;

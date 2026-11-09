@@ -19,7 +19,7 @@ Dil: Türkçe ve İngilizce (`src/app/text.h`); Windows'un görüntü diline uya
 
 Paketleme: `scripts\build.ps1 Release -Version 1.0.0` simge ve sürüm bilgisini gömer; `scripts\package.ps1` Inno Setup kurulumu ve Store için MSIX üretir (`build\dist`). Ayrıntı: `docs/distribution.md`.
 
-Tepsi simgesine sağ tık > Ayarlar (ya da `Berth.exe --settings`): kısayolu açma/kapatma ve değiştirme, sıcak köşe ve bekleme süresi, görev çubuğu önizlemesi, oturum açılınca başlatma, sabit uygulamaların sırası ve boyutu. Ayarlar `%APPDATA%\Berth\settings.ini` dosyasında. Dokunmatik yüzey hareketini Windows kendisi işler; üç ya da dört parmakla yukarı kaydırma Windows Ayarları'nda "Özel kısayol" yapılıp uygulamanın kısayoluna atanır.
+Tepsi simgesine sağ tık > Ayarlar (ya da `Berth.exe --settings`): kısayolu açma/kapatma ve değiştirme, sıcak köşe ve bekleme süresi, görev çubuğu önizlemesi, oturum açılınca başlatma, sabit uygulamaların sırası ve boyutu. Ayarlar `%APPDATA%\Berth\settings.ini` dosyasında. Dokunmatik yüzey hareketlerini Berth kendisi tanır (aşağıdaki "Dokunmatik yüzey ve uygulama pencereleri" bölümü).
 
 Sahnede: önizleme köşesinde sola/sağa yaslama, ekranı kapla, görev çubuğuna küçült ve kapat; önizlemeyi şeritte bir masaüstüne ya da "+" üzerine sürükleme; şeritteki masaüstünü sürükleyip sıralama; yazarak arama; hücreye sağ tıkla taşıma, boyut ve sabitleme.
 
@@ -52,4 +52,4 @@ Davranış Mac'teki gibidir (docs/mac-notes.md). Windows'a özgü olanlar:
 - Başka sürecin penceresi başka masaüstüne taşınabiliyor; masaüstleri sıralanabiliyor ve oluşturulabiliyor.
 - `SetForegroundWindow` masaüstü değiştirmiyor; önce masaüstüne geçmek gerekiyor.
 - Görev çubuğu düğmeleri UI Automation ile uygulama kimliği ve konumuyla okunuyor.
-- Görev çubuğu simgesinin üstünde Windows'un kendi önizlemesi de açılıyor ve 24H2'den beri yerleşik ayarla kapanmıyor (`ExtendedUIHoverTime` ve `TaskbarNoThumbnail` denendi, etkisiz). Bu önizleme ayrı bir pencere değil, görev çubuğunun içinde çiziliyor. Panel bu yüzden onun üstünde (yaklaşık 171 nokta yukarıda) açılır; aradaki koridor panelden sayılır.
+- Görev çubuğu simgesinin üstünde Windows'un kendi önizlemesi de açılıyor ve 24H2'den beri yerleşik ayarla kapanmıyor (`ExtendedUIHoverTime` ve `TaskbarNoThumbnail` denendi, etkisiz). Bu önizleme ayrı bir pencere değil, görev çubuğunun içinde çiziliyor. Panel bu yüzden onun üstünde (yaklaşık 171 nokta yukarıda) açılır; aradaki koridor panelden sayılır. Görev çubuğu sola ya da sağa yaslıyken Windows kartları alt alta dizer ve önizleme yaklaşık 202 nokta yana taşar. Panel de onun yanında açılır, kartlar tek sütunda en çok 6 tane olur, ekranın yüksekliğine sığmayanlar gösterilmez.
