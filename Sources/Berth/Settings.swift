@@ -35,6 +35,10 @@ final class AppSettings: ObservableObject {
         static let remoteSessions = "remoteSessionNames"
         static let blockedRemotes = "remoteBlockedNames"
         static let sessionAliases = "remoteSessionAliases"
+        static let mouseTune = "mouseTuneEnabled"
+        static let mouseName = "mouseTuneName"
+        static let mouseSpeed = "mouseTuneSpeed"
+        static let mouseAcceleration = "mouseTuneAcceleration"
     }
 
     @Published var dockPreviewsEnabled: Bool {
@@ -165,6 +169,27 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(keepDockOpenDuringPreview, forKey: Key.keepDockOpen) }
     }
 
+    /// Harici farede hız ve ivme ayrı (`MouseTuner`). Kapalıyken fareye dokunulmaz.
+    @Published var mouseTuneEnabled: Bool {
+        didSet { UserDefaults.standard.set(mouseTuneEnabled, forKey: Key.mouseTune); onMouseTuneChange?() }
+    }
+    /// Farenin ürün adı.
+    @Published var mouseTuneName: String {
+        didSet { UserDefaults.standard.set(mouseTuneName, forKey: Key.mouseName); onMouseTuneChange?() }
+    }
+    @Published var mouseSpeed: Double {
+        didSet { UserDefaults.standard.set(mouseSpeed, forKey: Key.mouseSpeed); onMouseTuneChange?() }
+    }
+    @Published var mouseAcceleration: Double {
+        didSet { UserDefaults.standard.set(mouseAcceleration, forKey: Key.mouseAcceleration); onMouseTuneChange?() }
+    }
+    /// `MouseTuner`ın durumu (kaydedilmez).
+    @Published var mouseTuneStatus = ""
+
+    var mouseTuneConfig: MouseTuner.Config {
+        MouseTuner.Config(enabled: mouseTuneEnabled, mouseName: mouseTuneName, speed: mouseSpeed, acceleration: mouseAcceleration)
+    }
+
     @Published private(set) var shortcut: Shortcut
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published private(set) var launchAtLoginError: String?
@@ -178,6 +203,7 @@ final class AppSettings: ObservableObject {
     var onRemoteTokenChange: ((String) -> Void)?
     var onBlockedRemotesChange: (([String]) -> Void)?
     var onFullScreenDockChange: ((Bool) -> Void)?
+    var onMouseTuneChange: (() -> Void)?
     /// Kısayol alınabildiyse `true` döner.
     var onShortcutChange: ((Shortcut) -> Bool)?
 
@@ -205,6 +231,10 @@ final class AppSettings: ObservableObject {
         remoteSessionNames = defaults.string(forKey: Key.remoteSessions) ?? ""
         blockedRemotes = defaults.stringArray(forKey: Key.blockedRemotes) ?? []
         remoteSessionAliases = defaults.dictionary(forKey: Key.sessionAliases) as? [String: String] ?? [:]
+        mouseTuneEnabled = defaults.object(forKey: Key.mouseTune) as? Bool ?? false
+        mouseTuneName = defaults.string(forKey: Key.mouseName) ?? ""
+        mouseSpeed = MouseTune.clampSpeed(defaults.object(forKey: Key.mouseSpeed) as? Double ?? MouseTune.defaultSpeed)
+        mouseAcceleration = MouseTune.clampAcceleration(defaults.object(forKey: Key.mouseAcceleration) as? Double ?? MouseTune.defaultAcceleration)
         // İlk açılışta izin istenmez: izni zaten verilmişse açık, yoksa kapalı başlar.
         windowPreviewsEnabled = defaults.object(forKey: Key.windowPreviews) as? Bool ?? Permissions.screenRecording
         if let data = defaults.data(forKey: Key.shortcut),
@@ -336,7 +366,7 @@ final class SettingsWindowController {
 
 /// Ayarların bölümleri: Sistem Ayarları'ndaki gibi solda renkli simgeleriyle.
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case opening, pinned, layouts, windows, general, permissions
+    case opening, pinned, layouts, windows, mouse, general, permissions
 
     var id: String { rawValue }
 
@@ -346,6 +376,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .pinned: return tx("Sabit uygulamalar", "Pinned apps")
         case .layouts: return tx("Çalışma düzenleri", "Workspace layouts")
         case .windows: return tx("Windows bağlantısı", "Windows connection")
+        case .mouse: return tx("Fare", "Mouse")
         case .general: return tx("Genel", "General")
         case .permissions: return tx("İzinler", "Permissions")
         }
@@ -357,6 +388,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .pinned: return "pin.fill"
         case .layouts: return "square.grid.3x2.fill"
         case .windows: return "pc"
+        case .mouse: return "computermouse.fill"
         case .general: return "gearshape.fill"
         case .permissions: return "lock.shield.fill"
         }
@@ -368,6 +400,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .pinned: return .orange
         case .layouts: return .purple
         case .windows: return .teal
+        case .mouse: return .pink
         case .general: return .gray
         case .permissions: return .indigo
         }
@@ -415,6 +448,7 @@ private struct SettingsView: View {
         case .pinned: ArrangementTab(store: store)
         case .layouts: LayoutsTab(layouts: layouts, actions: layoutActions)
         case .windows: WindowsTab(settings: settings)
+        case .mouse: MouseTab(settings: settings)
         case .general: UsageTab(settings: settings)
         case .permissions: PermissionsTab(settings: settings)
         }
@@ -859,6 +893,94 @@ private struct UsageTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Harici fare: hız ve ivme ayrı (`MouseTuner`).
+private struct MouseTab: View {
+    @ObservedObject var settings: AppSettings
+    @State private var mice: [String] = []
+    // Kaydırıcı sürüklenirken her adımda hidutil çalışmasın: bırakınca uygulanır.
+    @State private var speed = MouseTune.defaultSpeed
+    @State private var acceleration = MouseTune.defaultAcceleration
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(tx("Harici farede hızı ve ivmeyi ayrı ayarla", "Set speed and acceleration separately for an external mouse"),
+                       isOn: Binding(get: { settings.mouseTuneEnabled }, set: { enabled in
+                           if enabled, settings.mouseTuneName.isEmpty, mice.count == 1 { settings.mouseTuneName = mice[0] }
+                           settings.mouseTuneEnabled = enabled
+                       }))
+                Text(tx("macOS'ta izleme hızını artırmak ivmeyi de dikleştirir: kısa harekette imleç durgun kalır, hızlı harekette fırlar. Burada ikisi ayrı, Windows'taki \"İşaretçi hassasiyetini artır\" hissine yakın: hız kısa mesafeyi, ivme uzun ve hızlı hareketi belirler. Trackpad etkilenmez.",
+                        "On macOS, raising the tracking speed also steepens acceleration: the pointer feels sluggish on short moves and jumps on fast ones. Here the two are separate, closer to Windows' \"Enhance pointer precision\": speed sets short moves, acceleration sets long, fast ones. The trackpad isn't affected."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if settings.mouseTuneEnabled {
+                    Text(settings.mouseTuneStatus).font(.callout).foregroundStyle(Color.accentColor)
+                }
+            }
+            Section {
+                Picker(tx("Fare", "Mouse"), selection: $settings.mouseTuneName) {
+                    if settings.mouseTuneName.isEmpty { Text(tx("Seçin", "Choose")).tag("") }
+                    ForEach(choices, id: \.self) { name in
+                        Text(mice.contains(name) ? name : tx("\(name) (bağlı değil)", "\(name) (not connected)")).tag(name)
+                    }
+                }
+                .disabled(!settings.mouseTuneEnabled)
+                if mice.isEmpty {
+                    Text(tx("Bağlı harici fare yok.", "No external mouse connected.")).font(.callout).foregroundStyle(.secondary)
+                }
+                slider(tx("Hız", "Speed"), value: $speed, range: MouseTune.speedRange, label: String(format: "%.2f×", speed)) {
+                    settings.mouseSpeed = speed
+                }
+                slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
+                       label: String(format: "%.2f", acceleration)) {
+                    settings.mouseAcceleration = acceleration
+                }
+                HStack {
+                    Text(tx("Hız 1× macOS'un temel hızıdır; ivme 3 macOS'un en dik eğrisi. Sistem Ayarları > Fare'de imleç ivmesi açık kalmalı.",
+                            "Speed 1× is macOS's base speed; acceleration 3 is macOS's steepest curve. Keep pointer acceleration on in System Settings > Mouse."))
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(tx("Varsayılan", "Defaults")) {
+                        speed = MouseTune.defaultSpeed
+                        acceleration = MouseTune.defaultAcceleration
+                        settings.mouseSpeed = speed
+                        settings.mouseAcceleration = acceleration
+                    }
+                    .disabled(!settings.mouseTuneEnabled)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            mice = MouseTuner.connectedMice()
+            speed = settings.mouseSpeed
+            acceleration = settings.mouseAcceleration
+        }
+    }
+
+    /// Bağlı fareler ve bağlı olmasa da seçili olan.
+    private var choices: [String] {
+        let name = settings.mouseTuneName
+        return name.isEmpty || mice.contains(name) ? mice : [name] + mice
+    }
+
+    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, label: String,
+                        commit: @escaping () -> Void) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Slider(value: value, in: range, step: 0.05) { editing in
+                    if !editing { commit() }
+                }
+                Text(label)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .trailing)
+            }
+        }
+        .disabled(!settings.mouseTuneEnabled)
     }
 }
 

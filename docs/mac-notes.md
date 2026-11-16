@@ -117,3 +117,12 @@ Mission Control'e atanan yukarı kaydırma, Dock'a ulaşmadan `CGEventTap` ile y
 Parmak sayısı ham dokunmalardan okunur (`MultitouchSupport`, belgesiz, izin gerektirmez). Dock hareketi seçilenden farklı parmakla geldiyse macOS'a bırakılır; 3 parmak seçilince 4 parmak Mission Control'ü açmaya devam eder. Seçilen parmak sayısı macOS'ta Mission Control'e atanmamışsa Dock hareketi hiç gelmez, kaydırma ham dokunmalardan tanınır (`MultiFingerSwipe`). Dokunma okunamazsa her parmak sayısı eskisi gibi yakalanır.
 
 Ölçülen olay alanları belgesizdir (eksen 2 dikey, faz 1/2/4, ilerleme işareti yön), bir macOS güncellemesi bozabilir. Alanlar değişirse hareket olduğu gibi Dock'a geçer, Mission Control açılır. Kurallar `SwipeGestureInterpreter` içinde ve testli.
+
+## Harici fare: hız ve ivme ayrı
+
+macOS'ta "İzleme hızı" tek kaydırıcıdır: hızı artırmak ivme eğrisini de dikleştirir. Ayarlar > Fare açıkken seçilen harici fareye iki değer yazılır (`hidutil property --matching '{"Product":…}' --set …`, izin gerekmez, kalıcı değil):
+
+- Hız: `HIDPointerResolution` = 400 / hız DPI (16.16). Fare düşük DPI'lı gibi gösterilir, kısa hareket hızlanır.
+- İvme: `HIDMouseAcceleration` (16.16), sistem kaydırıcısıyla aynı ölçek (0 düz, 3 sistemin en diki, 5'e kadar).
+
+Fare ürün adıyla eşlenir: HP Z3700 üretici ve ürün kimliğini ters bildiriyor. macOS değerleri fare yeniden bağlanınca, uyanışta ve Sistem Ayarları'nda fare kaydırıcısı oynatılınca ezer; bu üç durumda yeniden yazılır (bağlanma ve uyanışta 1 ve 3 sn sonra). Kapatılınca ya da Berth kapanınca varsayılan çözünürlük ve `com.apple.mouse.scaling` geri yazılır. Varsayılanlar (2×, 3) HP Z3700 ile Windows'ta EPP açık, hız 20/20 hissine göre seçildi.

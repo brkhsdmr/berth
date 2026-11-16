@@ -71,6 +71,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     }
     private let trackpadGesture = TrackpadGestureTap()
     private let hotCorner = HotCornerMonitor()
+    private let mouseTuner = MouseTuner()
     private let layoutStore = WorkspaceLayoutStore()
     private var isClosing = false
     /// Tam ekrana alma ve sıralama sürerken imleç bizde: yeni açılış işi bozar.
@@ -85,6 +86,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         DockAutoHide.release()
+        mouseTuner.shutdown()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -162,6 +164,13 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         hotCorner.onTrigger = { [weak self] in self?.toggle() }
         settings.onHotCornerChange = { [weak self] corner, delay in self?.hotCorner.configure(corner: corner, delay: delay) }
         hotCorner.configure(corner: settings.hotCorner, delay: settings.hotCornerDelay)
+        mouseTuner.onStatus = { [weak self] status in self?.settings.mouseTuneStatus = status.text }
+        settings.onMouseTuneChange = { [weak self] in
+            guard let self else { return }
+            self.mouseTuner.configure(self.settings.mouseTuneConfig)
+        }
+        mouseTuner.configure(settings.mouseTuneConfig)
+        settings.mouseTuneStatus = mouseTuner.status.text
         settings.onShortcutChange = { [weak self] shortcut in
             guard let self else { return false }
             // Kısayol kapalıyken yalnızca kaydedilir; açılınca alınır.

@@ -708,3 +708,25 @@ final class RemoteSessionMatcherTests: XCTestCase {
         XCTAssertNil(RemoteSessionMatcher.match(title: "Work PC", computers: computers, aliases: ["desktop-7q2": "  "]))
     }
 }
+
+final class MouseTuneTests: XCTestCase {
+    func testSpeedLowersReportedResolution() {
+        XCTAssertEqual(MouseTune.resolution(forSpeed: 1), 400 * 65536)
+        XCTAssertEqual(MouseTune.resolution(forSpeed: 2), 200 * 65536)
+        XCTAssertEqual(MouseTune.resolution(forSpeed: 100), 100 * 65536, "hız 4'te sınırlanır")
+    }
+
+    func testPropertiesUseFixedPointAndClamp() {
+        XCTAssertEqual(MouseTune.propertiesJSON(speed: 2, acceleration: 3),
+                       "{\"HIDPointerResolution\":13107200,\"HIDMouseAcceleration\":196608}")
+        XCTAssertEqual(MouseTune.propertiesJSON(speed: 2, acceleration: -1),
+                       "{\"HIDPointerResolution\":13107200,\"HIDMouseAcceleration\":0}")
+        XCTAssertEqual(MouseTune.systemPropertiesJSON(scaling: 0.6875),
+                       "{\"HIDPointerResolution\":26214400,\"HIDMouseAcceleration\":45056}")
+    }
+
+    func testMatchingEscapesName() {
+        XCTAssertEqual(MouseTune.matchingJSON(mouseName: "HP \"Z\" \\ Mouse"),
+                       "{\"Product\":\"HP \\\"Z\\\" \\\\ Mouse\",\"PrimaryUsagePage\":1,\"PrimaryUsage\":2}")
+    }
+}
