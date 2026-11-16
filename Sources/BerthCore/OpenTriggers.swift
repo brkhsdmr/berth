@@ -45,38 +45,45 @@ public enum ScreenCorner: String, CaseIterable, Sendable {
 /// Trackpad'deki ham dokunmalardan çok parmakla dikey kaydırmayı tanır.
 ///
 /// Konumlar trackpad'e göre 0...1 arasıdır, y yukarı doğru artar. Bir oturum ilk dokunuşla başlar,
-/// tüm parmaklar kalkınca biter; oturumda bir kez tetiklenir. Seçilenden fazla parmak değen oturum
-/// (beş parmakla sıkıştırma gibi) yok sayılır.
+/// tüm parmaklar kalkınca biter; oturumda bir kez tetiklenir. Parmak sayısı oturumda değen en fazla
+/// parmaktır; o sayıdan az parmak değerken tetiklenmez. Yalnızca `fingerCounts` içindeki sayılar
+/// tanınır (beş parmakla sıkıştırma gibi hareketler yok sayılır).
 public struct MultiFingerSwipe: Sendable {
-    public enum Action: Equatable, Sendable { case none, open, close, down }
+    public struct Swipe: Equatable, Sendable {
+        public var fingers: Int
+        public var direction: SwipeDirection
+        public init(fingers: Int, direction: SwipeDirection) {
+            self.fingers = fingers
+            self.direction = direction
+        }
+    }
 
     /// Trackpad yüksekliğinin oranı: Dock hareketinin eşiğine yakın.
     public static let distance = 0.12
 
-    public var fingers: Int
+    public var fingerCounts: Set<Int>
     private var baseline: CGPoint?
     private var maxCount = 0
     private var fired = false
 
-    public init(fingers: Int) {
-        self.fingers = fingers
+    public init(fingerCounts: Set<Int> = [3, 4]) {
+        self.fingerCounts = fingerCounts
     }
 
     /// Oturumda şimdiye kadar değen en fazla parmak.
     public var sessionFingers: Int { maxCount }
 
-    /// `capturesDown`: sahne kapalıyken aşağı kaydırma `down` olur (bkz. SwipeGestureInterpreter).
-    public mutating func handle(_ points: [CGPoint], overlayOpen: Bool, capturesDown: Bool = false) -> Action {
+    public mutating func handle(_ points: [CGPoint]) -> Swipe? {
         guard !points.isEmpty else {
             baseline = nil
             maxCount = 0
             fired = false
-            return .none
+            return nil
         }
         maxCount = max(maxCount, points.count)
-        guard fingers > 0, points.count == fingers, maxCount == fingers, !fired else {
-            if points.count != fingers { baseline = nil }
-            return .none
+        guard points.count == maxCount, fingerCounts.contains(maxCount), !fired else {
+            baseline = nil
+            return nil
         }
 
         let center = CGPoint(
@@ -85,15 +92,12 @@ public struct MultiFingerSwipe: Sendable {
         )
         guard let start = baseline else {
             baseline = center
-            return .none
+            return nil
         }
         let dx = center.x - start.x
         let dy = center.y - start.y
-        guard abs(dy) >= Self.distance, abs(dx) < abs(dy) else { return .none }
+        guard abs(dy) >= Self.distance, abs(dx) < abs(dy) else { return nil }
         fired = true
-        if dy > 0, !overlayOpen { return .open }
-        if dy < 0, overlayOpen { return .close }
-        if dy < 0, capturesDown { return .down }
-        return .none
+        return Swipe(fingers: maxCount, direction: dy > 0 ? .up : .down)
     }
 }

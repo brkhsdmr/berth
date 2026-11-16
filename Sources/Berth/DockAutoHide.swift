@@ -57,4 +57,9 @@ enum AppExpose {
     static func show() {
         send?("com.apple.expose.front.awake" as CFString, 0)
     }
+
+    /// Mission Control: hareket tablosunda macOS'un kendi hareketi kullanılamadığında.
+    static func showMissionControl() {
+        send?("com.apple.expose.awake" as CFString, 0)
+    }
 }

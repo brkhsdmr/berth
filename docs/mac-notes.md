@@ -120,7 +120,7 @@ Parmak sayısı ham dokunmalardan okunur (`MultitouchSupport`, belgesiz, izin ge
 
 ## Harici fare: hız ve ivme ayrı
 
-macOS'ta "İzleme hızı" tek kaydırıcıdır: hızı artırmak ivme eğrisini de dikleştirir. Ayarlar > Fare açıkken ayarı açık olan her bağlı harici fareye kendi iki değeri yazılır (fareler ürün adıyla ayrı saklanır, `mouseProfiles`; ayarı olmayan fare macOS'un ayarıyla çalışır) (`hidutil property --matching '{"Product":…}' --set …`, izin gerekmez, kalıcı değil):
+macOS'ta "İzleme hızı" tek kaydırıcıdır: hızı artırmak ivme eğrisini de dikleştirir. Ayarlar > Fare ve klavye'de açıkken ayarı açık olan her bağlı harici fareye kendi iki değeri yazılır (fareler ürün adıyla ayrı saklanır, `mouseProfiles`; ayarı olmayan fare macOS'un ayarıyla çalışır) (`hidutil property --matching '{"Product":…}' --set …`, izin gerekmez, kalıcı değil):
 
 - Hız: `HIDPointerResolution` = 400 / hız DPI (16.16). Fare düşük DPI'lı gibi gösterilir, kısa hareket hızlanır.
 - İvme: `HIDMouseAcceleration` (16.16), sistem kaydırıcısıyla aynı ölçek (0 düz, 3 sistemin en diki, 5'e kadar).
@@ -129,6 +129,20 @@ Fare ürün adıyla eşlenir: HP Z3700 üretici ve ürün kimliğini ters bildir
 
 ## Kenar geçişi
 
-Ayarlar > Fare > Kenar geçişi (varsayılan kapalı): imleç bir dış sol/sağ kenara, dikeyde seçilen ortadaki banda değince bir masaüstü geçilir. İmleç kenara dayanınca konumu değişmiyor, fare hareketi olayına güvenilmiyor; açıkken saniyede 30 kez yoklanır. Fare düğmesi basılıyken ve sahne açıkken tetiklenmez; tetikledikten sonra imleç kenardan 6 nokta ayrılmadan yeniden tetiklenmez.
+Ayarlar > Fare ve klavye > Kenar geçişi (varsayılan kapalı): imleç bir dış sol/sağ kenara, dikeyde seçilen ortadaki banda değince bir masaüstü geçilir. İmleç kenara dayanınca konumu değişmiyor, fare hareketi olayına güvenilmiyor; açıkken saniyede 30 kez yoklanır. Fare düğmesi basılıyken ve sahne açıkken tetiklenmez; tetikledikten sonra imleç kenardan 6 nokta ayrılmadan yeniden tetiklenmez.
 
 Geçiş Dock'a yapay dört parmak yatay kaydırma olayı göndererek yapılır (yöntem InstantSpaceSwitcher'dan, MIT): yapay ^←/^→ Dock'ta masaüstü değiştirmiyor, uzak masaüstü öndeyken klavye de oraya gidiyor. İlerleme 0,15 sn'de 8 adımda artar, macOS'un kayma animasyonu görünür. macOS 27'de Dock yapay olayı yok sayıyor; olay verisine ham IOHID yükü (alan 4205: kuyruk başlığı, akışkan dokunma hareketi, hız) eklenip ardından boş bir hareket olayı (tip 29) gönderilince kabul ediyor, yön de doğal kaydırma ayarına bağlı (ölçüldü, 27.2; iki yön de geçti). Hız eski yoldaki gibi 1: InstantSpaceSwitcher bitişte 9999 gönderiyor, kayma fırlatılmış gibi hızlı geliyor. Debug derlemede `edgeSwitchTest` bildirimi ("left"/"right") geçişi doğrudan dener.
+
+## Trackpad hareket tablosu
+
+Ayarlar > Trackpad: 3 ve 4 parmakla yukarı/aşağı kaydırmanın işi (Berth sahnesi, Mission Control, App Exposé, hiçbir şey); `trackpadGestures`, eski tek seçenekli `trackpadFingers` açılışta taşınır (sahne o parmak sayısında yukarı, kalan hücreler macOS'un o an yaptığı). Kurallar `TrackpadGestureMap` / `GestureRouting` içinde ve testli.
+
+macOS dikey kaydırmayı parmak sayısı başına açıp kapatır (`TrackpadThree/FourFingerVertSwipeGesture` iki trackpad alanında ve `com.apple.trackpad.*VertSwipeGesture` bu bilgisayara özel genel alanda), açıksa yukarı Mission Control, aşağı App Exposé; ikisi Dock'ta ayrı açılır (`showMissionControlGestureEnabled`, `showAppExposeGestureEnabled`). Sistem Ayarları her biri için tek parmak sayısı gösteriyor: 3 ve 4 birlikte açıkken ekranda eksik görünür ama çalışır.
+
+Hücrenin işi macOS'un o harekette zaten yapacağıysa Dock olayı macOS'a bırakılır (parmağı izleyen animasyon), değilse yutulup iş Berth'te yapılır (Mission Control `com.apple.expose.awake`, App Exposé `com.apple.expose.front.awake`). macOS o parmak sayısını kapatmışsa ham dokunmalardan tanınır. Bir hücre değişince macOS'un ayarı tabloya en yakın hâle yazılır (`systemEquivalent`): Berth kapalıyken de benzer davranılsın, Sistem Ayarları çelişmesin. macOS'un bu yazımı hemen mi yoksa oturum yeniden açılınca mı uyguladığı ölçülmedi; Berth açıkken tablo her iki durumda geçerli. Sistem Ayarları kapanınca macOS'un ayarı yeniden okunur.
+
+## Niteleme tuşları
+
+Ayarlar > Fare ve klavye > Klavye: dahili klavye için Windows'a yakın dizilim (Kontrol → Dünya, Komut → Kontrol, Dünya → Komut; Sistem Ayarları'nın bu seçimde yazdığı çiftler), her harici klavye için Windows klavyesi dizilimi (Ctrl → ⌘, Windows → ⌥, Alt → ⌃). macOS'un kendi ayarına yazılır (`com.apple.keyboard.modifiermapping.<üretici>-<ürün>-0`, bu bilgisayara özel genel alan; dahili klavye 0-0) ve hemen etkili olsun diye klavye servisine `HIDKeyboardModifierMappingPairs` olarak `hidutil` ile uygulanır.
+
+Windows bağlantısı > "Windows App öndeyken … eşlemesini kaldır": Windows App öne gelince eşlemesi olan harici klavyelerin servisine boş eşleme yazılır, arkaya geçince macOS'un ayarındaki eşleme geri yazılır. Niteleme tuşu basılıyken değiştirilmez. Dahili klavyeye dokunulmaz.

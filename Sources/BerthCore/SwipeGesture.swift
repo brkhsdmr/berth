@@ -2,10 +2,10 @@
 ///
 /// Değerler gerçek hareketten ölçüldü: eksen 2 dikeydir, faz 1 başlangıç, 2 değişim, 4 bitiş;
 /// ilerleme yukarı kaydırmada artı, aşağı kaydırmada eksidir ve işareti ilk olaydan bellidir.
+/// Hareketin alınıp alınmayacağına (yutulur) ilk olayda karar verilir; alınan hareket eşiği
+/// geçince bir kez yönüyle tetiklenir.
 public struct SwipeGestureInterpreter: Sendable {
     public enum Decision: Equatable, Sendable { case pass, swallow }
-    /// `down`: sahne kapalıyken aşağı kaydırma (yalnızca `capturesDown` ile; uzak masaüstüne gider).
-    public enum Action: Equatable, Sendable { case none, open, close, down }
 
     public static let verticalAxis: Int64 = 2
     /// Parmak yolunun yaklaşık üçte biri: kazara dokunmalarda tetiklenmez, geç de kalmaz.
@@ -16,50 +16,39 @@ public struct SwipeGestureInterpreter: Sendable {
     private enum State { case idle, capturing, passing }
     private var state = State.idle
     private var fired = false
-    private var opensOnUp = true
-    private var takesDown = false
 
     public init() {}
 
-    /// - Parameter overlayOpen: Sahne açık mı. Kapalıyken aşağı kaydırma macOS'a bırakılır
-    ///   (App Exposé); açıkken aşağı kaydırma sahneyi kapatır.
-    /// - Parameter capturesDown: Sahne kapalıyken aşağı kaydırma da alınır ve `down` olur
-    ///   (Windows App oturumu öndeyken o bilgisayarın uygulama pencereleri).
-    public mutating func handle(axis: Int64, phase: Int64, progress: Double, velocity: Double, overlayOpen: Bool,
-                                capturesDown: Bool = false) -> (Decision, Action) {
-        guard axis == Self.verticalAxis else { return (.pass, .none) }
+    /// - Parameter capture: İlk olayda hareketin yönüyle sorulur; `true` dönerse hareket macOS'a
+    ///   gitmez, Berth'ündür.
+    /// - Returns: Karar ve alınan hareket tetiklendiyse yönü (hareket sırasında yön değişmiş olabilir).
+    public mutating func handle(axis: Int64, phase: Int64, progress: Double, velocity: Double,
+                                capture: (SwipeDirection) -> Bool) -> (Decision, SwipeDirection?) {
+        guard axis == Self.verticalAxis else { return (.pass, nil) }
 
         if phase == 1 {
             fired = false
-            opensOnUp = !overlayOpen
-            takesDown = capturesDown && !overlayOpen
-            state = (progress < 0 && !overlayOpen && !takesDown) ? .passing : .capturing
-            return (state == .capturing ? .swallow : .pass, .none)
+            state = capture(progress < 0 ? .down : .up) ? .capturing : .passing
+            return (state == .capturing ? .swallow : .pass, nil)
         }
 
         switch state {
         case .idle:
-            return (.pass, .none)
+            return (.pass, nil)
         case .passing:
             if phase != 2 { state = .idle }
-            return (.pass, .none)
+            return (.pass, nil)
         case .capturing:
-            var result = Action.none
-            if !fired {
-                let committed = abs(progress) >= Self.commitProgress
-                    || (phase == 4 && abs(velocity) >= Self.flickVelocity)
-                if committed, phase == 2 || phase == 4 {
-                    result = action(forProgress: progress)
-                    fired = result != .none
+            var result: SwipeDirection?
+            if !fired, phase == 2 || phase == 4 {
+                let committed = abs(progress) >= Self.commitProgress || (phase == 4 && abs(velocity) >= Self.flickVelocity)
+                if committed, progress != 0 {
+                    result = progress > 0 ? .up : .down
+                    fired = true
                 }
             }
             if phase != 2 { state = .idle }
             return (.swallow, result)
         }
-    }
-
-    private func action(forProgress progress: Double) -> Action {
-        if opensOnUp { return progress > 0 ? .open : (progress < 0 && takesDown ? .down : .none) }
-        return progress < 0 ? .close : .none
     }
 }

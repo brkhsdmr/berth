@@ -73,6 +73,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     private let hotCorner = HotCornerMonitor()
     private let mouseTuner = MouseTuner()
     private let edgeSwitch = EdgeSwitchMonitor()
+    private let remoteKeyboard = RemoteKeyboardMapping()
     private let layoutStore = WorkspaceLayoutStore()
     private var isClosing = false
     /// Tam ekrana alma ve sıralama sürerken imleç bizde: yeni açılış işi bozar.
@@ -88,6 +89,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         DockAutoHide.release()
         mouseTuner.shutdown()
+        remoteKeyboard.shutdown()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -149,19 +151,31 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             if enabled { self?.fullScreenDock.start() } else { self?.fullScreenDock.stop() }
         }
         if settings.fullScreenDockEnabled { fullScreenDock.start() }
-        trackpadGesture.onOpen = { [weak self] in
+        trackpadGesture.onAction = { [weak self] action in
             guard let self, !self.isOpen else { return }
-            if self.forwardToRemoteSession() { return }
-            self.open()
+            switch action {
+            case .nothing: break
+            case .scene:
+                if !self.forwardToRemoteSession() { self.open() }
+            case .appExpose:
+                // Yakalama kararı bir an önce verildi; oturum o arada değiştiyse iş macOS'a geri döner.
+                if !self.forwardToRemoteSession(.appWindows) { AppExpose.show() }
+            case .missionControl:
+                AppExpose.showMissionControl()
+            }
         }
         trackpadGesture.onClose = { [weak self] in self?.close() }
-        trackpadGesture.onDown = { [weak self] in
-            guard let self, !self.isOpen else { return }
-            // Yakalama kararı bir an önce verildi; oturum o arada değiştiyse hareket macOS'a geri döner.
-            if !self.forwardToRemoteSession(.appWindows) { AppExpose.show() }
+        settings.onTrackpadGesturesChange = { [weak self] in
+            guard let self else { return }
+            self.trackpadGesture.configure(map: self.settings.trackpadGestures, system: self.settings.systemGestures)
         }
-        settings.onTrackpadFingersChange = { [weak self] count in self?.trackpadGesture.setFingers(count) }
-        trackpadGesture.setFingers(settings.trackpadFingers)
+        trackpadGesture.configure(map: settings.trackpadGestures, system: settings.systemGestures)
+        // Sistem Ayarları'nda hareket ayarı değişmiş olabilir.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == "com.apple.systempreferences" else { return }
+            MainActor.assumeIsolated { self?.settings.refreshSystemGestures() }
+        }
         hotCorner.onTrigger = { [weak self] in self?.toggle() }
         settings.onHotCornerChange = { [weak self] corner, delay in self?.hotCorner.configure(corner: corner, delay: delay) }
         hotCorner.configure(corner: settings.hotCorner, delay: settings.hotCornerDelay)
@@ -183,6 +197,8 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             self.edgeSwitch.configure(enabled: self.settings.edgeSwitchEnabled, band: self.settings.edgeSwitchBand)
         }
         edgeSwitch.configure(enabled: settings.edgeSwitchEnabled, band: settings.edgeSwitchBand)
+        settings.onRemoteKeyboardLiftChange = { [weak self] enabled in self?.remoteKeyboard.configure(enabled: enabled) }
+        remoteKeyboard.configure(enabled: settings.remoteKeyboardLift)
         settings.onShortcutChange = { [weak self] shortcut in
             guard let self else { return false }
             // Kısayol kapalıyken yalnızca kaydedilir; açılınca alınır.

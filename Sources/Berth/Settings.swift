@@ -26,7 +26,9 @@ final class AppSettings: ObservableObject {
         static let windowPreviews = "windowPreviewsEnabled"
         static let otherAppsScroll = "otherAppsScrollEnabled"
         static let trackpadGesture = "trackpadGestureEnabled"
+        // Tek seçenekli eski sürüm: sahneyi açan parmak sayısı. Açılışta `trackpadGestures`'a taşınır.
         static let trackpadFingers = "trackpadFingers"
+        static let trackpadGestures = "trackpadGestures"
         static let hotCorner = "hotCorner"
         static let hotCornerDelay = "hotCornerDelay"
         static let shortcutEnabled = "shortcutEnabled"
@@ -38,6 +40,7 @@ final class AppSettings: ObservableObject {
         static let mouseTune = "mouseTuneEnabled"
         static let mouseProfiles = "mouseProfiles"
         static let edgeSwitch = "edgeSwitchEnabled"
+        static let remoteKeyboardLift = "remoteKeyboardLift"
         static let edgeSwitchBand = "edgeSwitchBand"
         // Tek fareli ilk sürüm; açılışta `mouseProfiles`'a taşınır.
         static let mouseName = "mouseTuneName"
@@ -65,12 +68,27 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(otherAppsScrollEnabled, forKey: Key.otherAppsScroll) }
     }
 
-    /// Sahneyi açan yukarı kaydırmanın parmak sayısı; 0 kapalı.
-    @Published var trackpadFingers: Int {
-        didSet {
-            UserDefaults.standard.set(trackpadFingers, forKey: Key.trackpadFingers)
-            onTrackpadFingersChange?(trackpadFingers)
-        }
+    /// 3 ve 4 parmakla dikey kaydırmanın işleri (`TrackpadGestureTap`).
+    @Published private(set) var trackpadGestures: TrackpadGestureMap
+    /// macOS'un o anki trackpad hareketi ayarı (kaydedilmez).
+    @Published private(set) var systemGestures = SystemTrackpad.gestures
+
+    /// Bir hücreyi değiştirir ve macOS'un ayarını tabloya en yakın hâle getirir.
+    func setGesture(_ action: GestureAction, fingers: Int, direction: SwipeDirection) {
+        var next = trackpadGestures
+        next[fingers, direction] = action
+        trackpadGestures = next
+        UserDefaults.standard.set(next.dictionary, forKey: Key.trackpadGestures)
+        let equivalent = next.systemEquivalent
+        if equivalent != systemGestures { SystemTrackpad.write(equivalent) }
+        refreshSystemGestures()
+    }
+
+    /// Sistem Ayarları değişmiş olabilir.
+    func refreshSystemGestures() {
+        let current = SystemTrackpad.gestures
+        if current != systemGestures { systemGestures = current }
+        onTrackpadGesturesChange?()
     }
 
     @Published var hotCorner: ScreenCorner {
@@ -188,6 +206,11 @@ final class AppSettings: ObservableObject {
     @Published var connectedMice: [String] = []
     @Published var mouseStatuses: [String: MouseTuner.Status] = [:]
 
+    /// Windows App öndeyken harici klavyelerin macOS niteleme tuşu eşlemesi kalkar (`RemoteKeyboardMapping`).
+    @Published var remoteKeyboardLift: Bool {
+        didSet { UserDefaults.standard.set(remoteKeyboardLift, forKey: Key.remoteKeyboardLift); onRemoteKeyboardLiftChange?(remoteKeyboardLift) }
+    }
+
     /// İmleç ekranın sol/sağ kenarına değince masaüstü değişir (`EdgeSwitchMonitor`).
     @Published var edgeSwitchEnabled: Bool {
         didSet { UserDefaults.standard.set(edgeSwitchEnabled, forKey: Key.edgeSwitch); onEdgeSwitchChange?() }
@@ -207,7 +230,7 @@ final class AppSettings: ObservableObject {
 
     var onDockPreviewsChange: ((Bool) -> Void)?
     var onWindowPreviewsChange: ((Bool) -> Void)?
-    var onTrackpadFingersChange: ((Int) -> Void)?
+    var onTrackpadGesturesChange: (() -> Void)?
     var onHotCornerChange: ((ScreenCorner, Double) -> Void)?
     var onShortcutEnabledChange: ((Bool) -> Void)?
     var onRemoteBridgeChange: ((Bool) -> Void)?
@@ -216,6 +239,7 @@ final class AppSettings: ObservableObject {
     var onFullScreenDockChange: ((Bool) -> Void)?
     var onMouseTuneChange: (() -> Void)?
     var onEdgeSwitchChange: (() -> Void)?
+    var onRemoteKeyboardLiftChange: ((Bool) -> Void)?
     /// Kısayol alınabildiyse `true` döner.
     var onShortcutChange: ((Shortcut) -> Bool)?
 
@@ -226,10 +250,15 @@ final class AppSettings: ObservableObject {
         keepDockOpenDuringPreview = defaults.object(forKey: Key.keepDockOpen) as? Bool ?? true
         otherAppsScrollEnabled = defaults.object(forKey: Key.otherAppsScroll) as? Bool ?? false
         // Eski açık/kapalı ayarı: kapalıysa kapalı kalır.
-        if let saved = defaults.object(forKey: Key.trackpadFingers) as? Int {
-            trackpadFingers = saved
+        if let saved = defaults.dictionary(forKey: Key.trackpadGestures) as? [String: String] {
+            trackpadGestures = TrackpadGestureMap(dictionary: saved)
         } else {
-            trackpadFingers = (defaults.object(forKey: Key.trackpadGesture) as? Bool ?? true) ? 3 : 0
+            // İlk açılış ya da eski sürüm: sahne seçilen parmak sayısında, kalanı macOS'un yaptığı.
+            let fingers = defaults.object(forKey: Key.trackpadFingers) as? Int
+                ?? ((defaults.object(forKey: Key.trackpadGesture) as? Bool ?? true) ? 3 : 0)
+            let migrated = TrackpadGestureMap.migrated(sceneFingers: fingers, system: SystemTrackpad.gestures)
+            trackpadGestures = migrated
+            defaults.set(migrated.dictionary, forKey: Key.trackpadGestures)
         }
         hotCorner = defaults.string(forKey: Key.hotCorner).flatMap(ScreenCorner.init(rawValue:)) ?? .none
         hotCornerDelay = defaults.object(forKey: Key.hotCornerDelay) as? Double ?? 0
@@ -253,6 +282,7 @@ final class AppSettings: ObservableObject {
         for key in [Key.mouseName, Key.mouseSpeed, Key.mouseAcceleration] { defaults.removeObject(forKey: key) }
         mouseProfiles = profiles
         edgeSwitchEnabled = defaults.object(forKey: Key.edgeSwitch) as? Bool ?? false
+        remoteKeyboardLift = defaults.object(forKey: Key.remoteKeyboardLift) as? Bool ?? false
         edgeSwitchBand = defaults.object(forKey: Key.edgeSwitchBand) as? Double ?? EdgeSwitch.defaultBand
         // İlk açılışta izin istenmez: izni zaten verilmişse açık, yoksa kapalı başlar.
         windowPreviewsEnabled = defaults.object(forKey: Key.windowPreviews) as? Bool ?? Permissions.screenRecording
@@ -385,7 +415,7 @@ final class SettingsWindowController {
 
 /// Ayarların bölümleri: Sistem Ayarları'ndaki gibi solda renkli simgeleriyle.
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case opening, pinned, layouts, windows, mouse, general, permissions
+    case opening, pinned, layouts, windows, trackpad, mouse, general, permissions
 
     var id: String { rawValue }
 
@@ -395,7 +425,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .pinned: return tx("Sabit uygulamalar", "Pinned apps")
         case .layouts: return tx("Çalışma düzenleri", "Workspace layouts")
         case .windows: return tx("Windows bağlantısı", "Windows connection")
-        case .mouse: return tx("Fare", "Mouse")
+        case .trackpad: return "Trackpad"
+        case .mouse: return tx("Fare ve klavye", "Mouse & keyboard")
         case .general: return tx("Genel", "General")
         case .permissions: return tx("İzinler", "Permissions")
         }
@@ -407,7 +438,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .pinned: return "pin.fill"
         case .layouts: return "square.grid.3x2.fill"
         case .windows: return "pc"
-        case .mouse: return "computermouse.fill"
+        case .trackpad: return "hand.point.up.left.fill"
+        case .mouse: return "keyboard.fill"
         case .general: return "gearshape.fill"
         case .permissions: return "lock.shield.fill"
         }
@@ -419,6 +451,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .pinned: return .orange
         case .layouts: return .purple
         case .windows: return .teal
+        case .trackpad: return .green
         case .mouse: return .pink
         case .general: return .gray
         case .permissions: return .indigo
@@ -467,6 +500,7 @@ private struct SettingsView: View {
         case .pinned: ArrangementTab(store: store)
         case .layouts: LayoutsTab(layouts: layouts, actions: layoutActions)
         case .windows: WindowsTab(settings: settings)
+        case .trackpad: TrackpadTab(settings: settings)
         case .mouse: MouseTab(settings: settings)
         case .general: UsageTab(settings: settings)
         case .permissions: PermissionsTab(settings: settings)
@@ -538,8 +572,6 @@ private struct OpenTab: View {
     @State private var shortcutMessage: String?
     @State private var monitor: Any?
 
-    private var systemFingers: [Int] { SystemTrackpad.missionControlFingers }
-
     var body: some View {
         Form {
             Section {
@@ -564,14 +596,14 @@ private struct OpenTab: View {
             }
 
             Section {
-                Picker(tx("Yukarı kaydırma", "Swipe up"), selection: $settings.trackpadFingers) {
-                    Text(tx("Kapalı", "Off")).tag(0)
-                    Text(tx("3 parmak", "3 fingers")).tag(3)
-                    Text(tx("4 parmak", "4 fingers")).tag(4)
+                LabeledContent(tx("Sahneyi açan hareket", "Gesture that opens the scene")) {
+                    HStack(spacing: 8) {
+                        Text(sceneGestureSummary).foregroundStyle(.secondary)
+                        Button(tx("Değiştir", "Change")) {
+                            NotificationCenter.default.post(name: .showSettingsPage, object: SettingsPage.trackpad.rawValue)
+                        }
+                    }
                 }
-                Text(trackpadNote)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             } header: {
                 Text("Trackpad")
             }
@@ -609,20 +641,13 @@ private struct OpenTab: View {
         .onDisappear { stopRecording() }
     }
 
-    private var trackpadNote: String {
-        guard settings.trackpadFingers > 0 else {
-            return tx("Mission Control macOS'ta olduğu gibi çalışır.", "Mission Control works as it does in macOS.")
+    private var sceneGestureSummary: String {
+        let cells = TrackpadGestureMap.fingerCounts.flatMap { fingers in
+            SwipeDirection.allCases.compactMap { direction in
+                settings.trackpadGestures[fingers, direction] == .scene ? TrackpadTab.gestureName(fingers: fingers, direction: direction) : nil
+            }
         }
-        let chosen = settings.trackpadFingers
-        let other = chosen == 3 ? 4 : 3
-        var lines = [tx("\(chosen) parmakla yukarı kaydırma sahneyi açar, sahne açıkken aşağı kaydırma kapatır.", "Swiping up with \(chosen) fingers opens the scene; swiping down closes it.")]
-        if systemFingers.contains(other) {
-            lines.append(tx("\(other) parmak Mission Control'ü açmaya devam eder.", "\(other) fingers still open Mission Control."))
-        }
-        if !systemFingers.contains(chosen) {
-            lines.append(tx("macOS bu hareketi başka işe atamış olabilir (örneğin üç parmakla sürükleme); çakışırsa Sistem Ayarları > Trackpad'den kapatın.", "macOS may use this gesture for something else (for example three-finger drag); if they clash, turn it off in System Settings > Trackpad."))
-        }
-        return lines.joined(separator: " ")
+        return cells.isEmpty ? tx("Yok", "None") : cells.joined(separator: ", ")
     }
 
     private func toggleRecording() {
@@ -694,7 +719,7 @@ private struct WindowsTab: View {
     private var statusLabel: String { connected ? tx("Bağlı", "Connected") : settings.remoteBridgeEnabled ? tx("Bekleniyor", "Waiting") : tx("Kapalı", "Off") }
     private var statusDetail: String {
         if connected { return settings.connectedRemotes.joined(separator: ", ") }
-        if settings.trackpadFingers == 0 { return tx("Açılış'ta trackpad hareketi kapalı; önce onu açın.", "The trackpad gesture is off in Opening; turn it on first.") }
+        if !settings.trackpadGestures.opensScene { return tx("Trackpad'de sahneyi açan hareket yok; önce Trackpad sayfasında birini seçin.", "No trackpad gesture opens the scene; choose one on the Trackpad page first.") }
         return settings.remoteBridgeEnabled ? tx("Windows'taki uygulamanın bağlanması bekleniyor.", "Waiting for Berth on Windows to connect.") : tx("Windows'a hareket gönderilmiyor.", "Gestures aren't sent to Windows.")
     }
 
@@ -719,7 +744,12 @@ private struct WindowsTab: View {
             }
             Section {
                 Toggle(tx("Windows App oturumunda hareketi Windows'a gönder", "Send the gesture to Windows in Windows App sessions"), isOn: $settings.remoteBridgeEnabled)
-                    .disabled(settings.trackpadFingers == 0)
+                    .disabled(!settings.trackpadGestures.opensScene)
+                Toggle(tx("Windows App öndeyken harici klavyelerin niteleme tuşu eşlemesini kaldır", "Lift external keyboards' modifier key mapping while Windows App is in front"),
+                       isOn: $settings.remoteKeyboardLift)
+                Text(tx("Windows klavyesinde macOS için yapılan eşleme (Ctrl → ⌘ gibi) uzak masaüstünde kalkar, tuşlar karşıya kendi adlarıyla gider. Windows App arkaya geçince eşleme geri gelir. Dahili klavyeye dokunulmaz.",
+                        "A Mac mapping on a Windows keyboard (like Ctrl → ⌘) is lifted in the remote desktop, so keys reach Windows as labeled. It comes back when Windows App moves to the background. The built-in keyboard isn't touched."))
+                    .font(.callout).foregroundStyle(.secondary)
                 if settings.remoteBridgeEnabled {
                     if !settings.remoteSessionNames.isEmpty {
                         TextField(tx("Oturum adları", "Session names"), text: $settings.remoteSessionNames, prompt: Text(tx("Boşsa: bu Mac'e bağlı Windows'larla eşleşen oturumlar", "If empty: sessions matching a Windows PC connected to this Mac")))
@@ -915,6 +945,114 @@ private struct UsageTab: View {
     }
 }
 
+/// Klavyelerin niteleme tuşları için hazır ayarlar. macOS'un kendi ayarına yazılır (Niteleme Tuşları).
+private struct KeyboardSections: View {
+    @State private var keyboards: [KeyboardModifiers.Keyboard] = []
+    @State private var mappings: [String: Set<ModifierPair>] = [:]
+
+    var body: some View {
+        Section {
+            if keyboards.isEmpty {
+                Text(tx("Bağlı klavye bulunamadı.", "No keyboard found.")).font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(keyboards) { keyboard in
+                let preset = keyboard.builtIn ? ModifierPreset.macWindowsLike : ModifierPreset.windowsKeyboard
+                let current = mappings[keyboard.id] ?? []
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: Binding(get: { current == preset }, set: { on in
+                        KeyboardModifiers.setMapping(on ? preset : [], for: keyboard)
+                        reload()
+                    })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(keyboard.name)
+                            Text(keyboard.builtIn
+                                 ? tx("Windows'a yakın: Kontrol → Dünya, Komut → Kontrol, Dünya → Komut. Boşluğun yanındaki tuş Ctrl gibi çalışır.",
+                                      "Windows-like: Control → Globe, Command → Control, Globe → Command. The key next to the space bar works like Ctrl.")
+                                 : tx("Windows klavyesi: Ctrl → ⌘, Windows → ⌥, Alt → ⌃. Alt sıra Windows'taki gibi çalışır.",
+                                      "Windows keyboard: Ctrl → ⌘, Windows → ⌥, Alt → ⌃. The bottom row works as it does on Windows."))
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !current.isEmpty, current != preset {
+                        Text(tx("Bu klavyede Sistem Ayarları'nda başka bir eşleme var; açmak onun yerine geçer.",
+                                "This keyboard has a different mapping in System Settings; turning this on replaces it."))
+                            .font(.callout).foregroundStyle(.orange)
+                    }
+                }
+            }
+        } header: {
+            Text(tx("Klavye", "Keyboard"))
+        } footer: {
+            HStack(alignment: .firstTextBaseline) {
+                Text(tx("macOS'un Niteleme Tuşları ayarına yazılır; Sistem Ayarları'nda da görünür ve Berth kapalıyken de geçerlidir. Kapatmak o klavyeyi macOS'un saptanmışına döndürür. Windows App öndeyken harici klavyelerin eşlemesi Windows bağlantısı sayfasından kaldırılabilir.",
+                        "Written to macOS's Modifier Keys setting; it shows in System Settings and stays in effect without Berth. Turning it off returns that keyboard to macOS's defaults. External keyboard mappings can be lifted while Windows App is in front on the Windows connection page."))
+                    .font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button(tx("Niteleme Tuşları", "Modifier Keys")) {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") { NSWorkspace.shared.open(url) }
+                }
+            }
+        }
+        .onAppear(perform: reload)
+    }
+
+    private func reload() {
+        keyboards = KeyboardModifiers.connected()
+        mappings = Dictionary(uniqueKeysWithValues: keyboards.map { ($0.id, KeyboardModifiers.mapping(for: $0)) })
+    }
+}
+
+/// 3 ve 4 parmakla dikey kaydırmanın işleri. macOS'un kendi hareket ayarı da tabloya göre yazılır.
+private struct TrackpadTab: View {
+    @ObservedObject var settings: AppSettings
+
+    static func gestureName(fingers: Int, direction: SwipeDirection) -> String {
+        direction == .up ? tx("\(fingers) parmak yukarı", "\(fingers) fingers up") : tx("\(fingers) parmak aşağı", "\(fingers) fingers down")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Text(tx("Trackpad'de üç ya da dört parmakla yukarı ve aşağı kaydırmanın ne yapacağını seçin. macOS'un kendi hareketi de bu tabloya göre ayarlanır; Sistem Ayarları her hareket için tek parmak sayısı gösterebildiğinden orada eksik görünebilir, geçerli olan bu tablodur.",
+                        "Choose what swiping up and down with three or four fingers does. macOS's own gesture setting is updated to match; System Settings can show only one finger count per gesture, so it may look incomplete there, but this table is what applies."))
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(TrackpadGestureMap.fingerCounts, id: \.self) { fingers in
+                Section(tx("\(fingers) parmak", "\(fingers) fingers")) {
+                    ForEach(SwipeDirection.allCases, id: \.self) { direction in
+                        Picker(direction == .up ? tx("Yukarı kaydırma", "Swipe up") : tx("Aşağı kaydırma", "Swipe down"), selection: Binding(
+                            get: { settings.trackpadGestures[fingers, direction] },
+                            set: { settings.setGesture($0, fingers: fingers, direction: direction) })) {
+                            ForEach(GestureAction.allCases, id: \.self) { action in
+                                Text(action.label).tag(action)
+                            }
+                        }
+                    }
+                    if fingers == 3, SystemTrackpad.threeFingerDrag {
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            Text(tx("Üç parmakla sürükleme açık: macOS üç parmak kaydırmalarını kullanmaz, Berth yine tanır ama sürüklerken de tetiklenebilir.",
+                                    "Three-finger drag is on: macOS doesn't use three-finger swipes; Berth still recognizes them, but they may also fire while dragging."))
+                                .font(.callout)
+                        }
+                    }
+                }
+            }
+            Section {
+                Text(tx("Mission Control ve App Exposé macOS'un hareketi açıksa parmağı izleyen kendi animasyonuyla açılır; değilse Berth açar. Sahne açıkken aşağı kaydırma sahneyi kapatır. Berth kapalıyken Berth sahnesi seçilen hareket macOS'un kendi işini yapar (yukarı Mission Control, aşağı App Exposé). Windows App oturumundayken (Windows bağlantısı) sahne ve uygulama pencereleri o bilgisayarda açılır.",
+                        "Mission Control and App Exposé open with macOS's own finger-tracking animation when macOS's gesture is on; otherwise Berth opens them. While the scene is open, swiping down closes it. When Berth isn't running, the gesture set to Berth scene does macOS's own action (up: Mission Control, down: App Exposé). In a Windows App session (Windows connection), the scene and app windows open on that PC."))
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button(tx("Sistem Ayarları'nda Trackpad", "Trackpad in System Settings")) { SystemTrackpad.openTrackpadSettings() }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { settings.refreshSystemGestures() }
+    }
+}
+
 /// Harici fare: hız ve ivme ayrı, her fareye kendi ayarı (`MouseTuner`).
 private struct MouseTab: View {
     @ObservedObject var settings: AppSettings
@@ -957,6 +1095,7 @@ private struct MouseTab: View {
                         "When the pointer touches the left edge of the screen you move one desktop left; the right edge, one desktop right. Outer edges only: an edge next to another display doesn't count. Not triggered while a mouse button is held (dragging or resizing a window) or while the scene is open; move the pointer off the edge to switch again. Works with mouse and trackpad; needs Accessibility access."))
                     .font(.callout).foregroundStyle(.secondary)
             }
+            KeyboardSections()
             Section {
                 Text(tx("Berth önerisi: hız 2×, ivme 3. Windows'ta \"İşaretçi hassasiyetini artır\" açık ve hız en yüksekteyken alınan hisse göre seçildi; kişisel ayarın değil, başlangıç noktası. macOS değerleri: hız 1× ve Sistem Ayarları > Fare'deki izleme hızı ivme olarak; fare macOS'taki gibi hissettirir, oradan ayarlamaya başlanabilir. Sistem Ayarları'nda imleç ivmesi açık kalmalı.",
                         "Berth's suggestion: speed 2×, acceleration 3, chosen to match Windows with \"Enhance pointer precision\" on and the speed at maximum; a starting point, not your personal setting. macOS values: speed 1× and the tracking speed from System Settings > Mouse as acceleration; the mouse feels as it does on macOS and you can tune from there. Keep pointer acceleration on in System Settings."))
@@ -1052,16 +1191,55 @@ private struct MouseProfileSection: View {
     }
 }
 
-/// macOS'un trackpad ve Sıcak Köşe ayarlarını okur; hiçbirini değiştirmez.
+/// macOS'un trackpad hareketi ve Sıcak Köşe ayarları. Hareket ayarı yalnızca kullanıcı Berth'ün
+/// Trackpad sayfasında bir hücreyi değiştirince yazılır.
 enum SystemTrackpad {
-    /// Mission Control'e atanmış yukarı kaydırma parmak sayıları.
-    static var missionControlFingers: [Int] {
-        let domain = "com.apple.AppleMultitouchTrackpad" as CFString
-        func value(_ key: String) -> Int? { CFPreferencesCopyAppValue(key as CFString, domain) as? Int }
-        var result: [Int] = []
-        if value("TrackpadThreeFingerVertSwipeGesture") == 2 { result.append(3) }
-        if value("TrackpadFourFingerVertSwipeGesture") == 2 { result.append(4) }
-        return result
+    private static let trackpadDomains = ["com.apple.AppleMultitouchTrackpad", "com.apple.driver.AppleBluetoothMultitouch.trackpad"]
+    private static let verticalKeys = [3: "TrackpadThreeFingerVertSwipeGesture", 4: "TrackpadFourFingerVertSwipeGesture"]
+    /// Sistem Ayarları aynı değeri bu bilgisayara özel genel alanda da tutuyor.
+    private static let hostVerticalKeys = [3: "com.apple.trackpad.threeFingerVertSwipeGesture", 4: "com.apple.trackpad.fourFingerVertSwipeGesture"]
+    private static let dock = "com.apple.dock" as CFString
+
+    static var gestures: SystemGestures {
+        let domain = trackpadDomains[0] as CFString
+        var vertical: [Int: Bool] = [:]
+        for (fingers, key) in verticalKeys {
+            let value = (CFPreferencesCopyAppValue(key as CFString, domain) as? Int)
+                ?? (CFPreferencesCopyValue(hostVerticalKeys[fingers]! as CFString, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost) as? Int)
+            vertical[fingers] = value == 2
+        }
+        func dockFlag(_ key: String) -> Bool { CFPreferencesCopyAppValue(key as CFString, dock) as? Bool ?? true }
+        return SystemGestures(vertical: vertical, missionControl: dockFlag("showMissionControlGestureEnabled"),
+                              appExpose: dockFlag("showAppExposeGestureEnabled"))
+    }
+
+    /// Üç parmakla sürükleme açıksa macOS üç parmak kaydırmalarını kullanmaz (Erişilebilirlik ayarı).
+    static var threeFingerDrag: Bool {
+        trackpadDomains.contains { CFPreferencesCopyAppValue("TrackpadThreeFingerDrag" as CFString, $0 as CFString) as? Bool == true }
+    }
+
+    static func write(_ gestures: SystemGestures) {
+        for name in trackpadDomains {
+            let domain = name as CFString
+            for (fingers, key) in verticalKeys {
+                CFPreferencesSetAppValue(key as CFString, (gestures.vertical[fingers] == true ? 2 : 0) as CFNumber, domain)
+            }
+            CFPreferencesAppSynchronize(domain)
+        }
+        for (fingers, key) in hostVerticalKeys {
+            CFPreferencesSetValue(key as CFString, (gestures.vertical[fingers] == true ? 2 : 0) as CFNumber,
+                                  kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost)
+        }
+        CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost)
+        CFPreferencesSetAppValue("showMissionControlGestureEnabled" as CFString, gestures.missionControl as CFBoolean, dock)
+        CFPreferencesSetAppValue("showAppExposeGestureEnabled" as CFString, gestures.appExpose as CFBoolean, dock)
+        CFPreferencesAppSynchronize(dock)
+    }
+
+    static func openTrackpadSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Trackpad-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     static func openHotCornerSettings() {

@@ -1,30 +1,31 @@
 import AppKit
 import BerthCore
 
-/// Seçilen parmak sayısıyla yukarı kaydırmayı Mission Control'e ulaşmadan yakalar, sahneyi açar.
+/// Trackpad'de 3 ve 4 parmakla dikey kaydırmayı hareket tablosuna (`TrackpadGestureMap`) göre işler.
 ///
-/// İki kaynak birlikte çalışır. macOS o parmak sayısını Mission Control'e atamışsa hareket Dock
-/// olayı olarak gelir ve burada yutulur (akıcı, ilerlemesi belli). Atamamışsa Dock olayı hiç
-/// gelmez; o zaman `TrackpadTouches` ham dokunmalardan tanır. Dock olayı geldiğinde parmak sayısı
-/// seçilenden farklıysa olay macOS'a bırakılır: 3 parmak seçildiyse 4 parmak Mission Control'ü açar.
+/// İki kaynak birlikte çalışır. macOS o parmak sayısında dikey kaydırmayı açmışsa hareket Dock olayı
+/// olarak gelir; tablodaki iş macOS'un zaten yapacağıysa (Mission Control, App Exposé) olay macOS'a
+/// bırakılır, parmağı izleyen kendi animasyonu kalır. Değilse olay Dock'tan önce yutulur ve iş Berth'te
+/// yapılır. macOS o parmak sayısını kapatmışsa Dock olayı hiç gelmez; o zaman `TrackpadTouches` ham
+/// dokunmalardan tanır. Parmak sayısı ham dokunmalardan okunur; okunamazsa üç parmak sayılır.
 ///
 /// Hareket Dock'a giden belgesiz bir olay olarak geliyor; CGEventTap onu Dock'tan önce görüp
 /// yutabiliyor (ölçüldü, SIP gerekmiyor, Erişilebilirlik izni yeterli). Yalnızca dikey hareket
-/// alınır: alan geçişleri (yatay) ve App Exposé (aşağı) macOS'ta kalır. Tek istisna: Berth'ün
-/// bağlı olduğu bir Windows App oturumu öndeyken aşağı kaydırma da alınır ve o bilgisayara gider.
+/// alınır, alan geçişleri (yatay) macOS'ta kalır. Sahne açıkken her dikey kaydırma Berth'ündür: aşağı
+/// kapatır. Berth'ün bağlı olduğu bir Windows App oturumu öndeyken App Exposé'ye giden hareket alınır
+/// ve o bilgisayara gider.
 ///
 /// Geri çağrı ayrı bir iş parçacığında çalışır: ana iş parçacığı meşgulken olay beklerse macOS
-/// tap'i kapatır. Uygulama çökerse ya da seçenek kapatılırsa tap kalkar ve Mission Control kendiliğinden
-/// eski hâline döner.
+/// tap'i kapatır. Uygulama çökerse tap kalkar ve hareketler kendiliğinden macOS'a döner.
 final class TrackpadGestureTap: @unchecked Sendable {
-    var onOpen: (@MainActor () -> Void)?
+    var onAction: (@MainActor (GestureAction) -> Void)?
     var onClose: (@MainActor () -> Void)?
-    /// Sahne kapalıyken aşağı kaydırma; yalnızca `setCapturesDown(true)` iken gelir.
-    var onDown: (@MainActor () -> Void)?
 
     private let lock = NSLock()
     private var overlayOpen = false
-    private var capturesDown = false
+    private var remoteDown = false
+    private var map = TrackpadGestureMap()
+    private var system = SystemGestures(vertical: [:], missionControl: true, appExpose: true)
     private var isRunning = false
     private var runLoop: CFRunLoop?
     private var thread: Thread?
@@ -32,10 +33,10 @@ final class TrackpadGestureTap: @unchecked Sendable {
     // Yalnızca tap iş parçacığında kullanılır.
     private var interpreter = SwipeGestureInterpreter()
     private var tap: CFMachPort?
-    /// Parmak sayısı tutmadığı için macOS'a bırakılan Dock hareketi sürüyor.
-    private var passingOtherFingers = false
+    private var gestureFingers = 3
+    /// Bu hareket için ham dokunmalar zaten tetikledi; Dock olayı yalnızca yutulur.
+    private var rawAlreadyFired = false
     private let touches = TrackpadTouches()
-    private var fingers = 3
 
     private static func field(_ raw: UInt32) -> CGEventField { unsafeBitCast(raw, to: CGEventField.self) }
     private static let dockControlType: UInt32 = 30
@@ -47,47 +48,41 @@ final class TrackpadGestureTap: @unchecked Sendable {
         lock.unlock()
     }
 
-    /// Aşağı kaydırma macOS'a (App Exposé) bırakılmaz, `onDown` olur. Ana iş parçacığı günceller;
-    /// hareket sırasında soru sorulmaz (tap beklerse macOS onu kapatır).
+    /// App Exposé'ye giden hareket macOS'a bırakılmaz, Windows oturumuna gider. Ana iş parçacığı
+    /// günceller; hareket sırasında soru sorulmaz (tap beklerse macOS onu kapatır).
     func setCapturesDown(_ value: Bool) {
         lock.lock()
-        capturesDown = value
+        remoteDown = value
         lock.unlock()
     }
 
-    fileprivate var downIsCaptured: Bool {
+    /// Tablo ya da macOS'un ayarı değişince. Berth'ün hiçbir harekete karışması gerekmiyorsa durur.
+    func configure(map: TrackpadGestureMap, system: SystemGestures) {
         lock.lock()
-        defer { lock.unlock() }
-        return capturesDown
-    }
-
-    /// 0 kapatır.
-    func setFingers(_ count: Int) {
-        lock.lock()
-        fingers = count
+        self.map = map
+        self.system = system
         lock.unlock()
-        touches.setFingers(count)
-        if count > 0 { start() } else { stop() }
+        let needed = TrackpadGestureMap.fingerCounts.contains { fingers in
+            SwipeDirection.allCases.contains { map[fingers, $0] != system.native(fingers: fingers, direction: $0) }
+        } || map.contains(.appExpose)
+        if needed { start() } else { stop() }
     }
 
-    private var chosenFingers: Int {
+    private struct Snapshot {
+        var overlayOpen: Bool
+        var remoteDown: Bool
+        var map: TrackpadGestureMap
+        var system: SystemGestures
+    }
+
+    private var snapshot: Snapshot {
         lock.lock()
         defer { lock.unlock() }
-        return fingers
+        return Snapshot(overlayOpen: overlayOpen, remoteDown: remoteDown, map: map, system: system)
     }
 
-    private var overlayIsOpen: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return overlayOpen
-    }
-
-    func start() {
-        touches.overlayIsOpen = { [weak self] in self?.overlayIsOpen ?? false }
-        touches.capturesDown = { [weak self] in self?.downIsCaptured ?? false }
-        touches.onOpen = { [weak self] in self?.onOpen?() }
-        touches.onClose = { [weak self] in self?.onClose?() }
-        touches.onDown = { [weak self] in self?.onDown?() }
+    private func start() {
+        touches.onSwipe = { [weak self] swipe in self?.rawSwipe(swipe) ?? false }
         touches.start()
         lock.lock()
         defer { lock.unlock() }
@@ -100,7 +95,7 @@ final class TrackpadGestureTap: @unchecked Sendable {
         thread.start()
     }
 
-    func stop() {
+    private func stop() {
         touches.stop()
         lock.lock()
         isRunning = false
@@ -166,39 +161,51 @@ final class TrackpadGestureTap: @unchecked Sendable {
 
         let axis = event.getIntegerValueField(Self.field(123))
         let phase = event.getIntegerValueField(Self.field(132))
-        if axis == SwipeGestureInterpreter.verticalAxis {
-            if phase == 1 {
-                // Dokunma bilgisi yoksa (0) eski davranış: hareket bizimdir.
-                let count = touches.sessionFingers
-                passingOtherFingers = count > 0 && count != chosenFingers
-                if !passingOtherFingers { touches.markDockHandled() }
-            }
-            if passingOtherFingers {
-                if phase != 1 && phase != 2 { passingOtherFingers = false }
-                return Unmanaged.passUnretained(event)
-            }
+        let state = snapshot
+        if axis == SwipeGestureInterpreter.verticalAxis, phase == 1 {
+            gestureFingers = GestureRouting.fingers(touches.sessionFingers)
+            rawAlreadyFired = touches.markDockHandled()
         }
-
-        let (decision, action) = interpreter.handle(
+        let fingers = gestureFingers
+        let (decision, direction) = interpreter.handle(
             axis: axis,
             phase: phase,
             progress: event.getDoubleValueField(Self.field(124)),
             velocity: event.getDoubleValueField(Self.field(129)),
-            overlayOpen: overlayIsOpen,
-            capturesDown: downIsCaptured
+            capture: { direction in
+                GestureRouting.captures(fingers: fingers, direction: direction, map: state.map, system: state.system,
+                                        overlayOpen: state.overlayOpen, remoteDown: state.remoteDown)
+            }
         )
-
-        switch action {
-        case .none:
-            break
-        case .open:
-            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onOpen?() } }
-        case .close:
-            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onClose?() } }
-        case .down:
-            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onDown?() } }
+        if let direction, !rawAlreadyFired {
+            perform(GestureRouting.outcome(fingers: fingers, direction: direction, map: state.map, overlayOpen: state.overlayOpen))
         }
         return decision == .swallow ? nil : Unmanaged.passUnretained(event)
+    }
+
+    /// Dock olayı gelmeden ham dokunmalardan tanınan hareket. macOS bu parmak sayısında dikey kaydırmayı
+    /// açmışsa Dock olayı gelecek demektir: iş macOS'unsa dokunulmaz. Tetiklendiyse `true`.
+    private func rawSwipe(_ swipe: MultiFingerSwipe.Swipe) -> Bool {
+        let state = snapshot
+        let macOSHandles = state.system.vertical[swipe.fingers] == true
+            && !GestureRouting.captures(fingers: swipe.fingers, direction: swipe.direction, map: state.map, system: state.system,
+                                        overlayOpen: state.overlayOpen, remoteDown: state.remoteDown)
+        guard !macOSHandles else { return false }
+        let outcome = GestureRouting.outcome(fingers: swipe.fingers, direction: swipe.direction, map: state.map, overlayOpen: state.overlayOpen)
+        guard outcome != .none else { return false }
+        perform(outcome)
+        return true
+    }
+
+    private func perform(_ outcome: GestureRouting.Outcome) {
+        switch outcome {
+        case .none:
+            break
+        case .close:
+            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onClose?() } }
+        case .perform(let action):
+            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onAction?(action) } }
+        }
     }
 }
 
@@ -208,11 +215,8 @@ final class TrackpadGestureTap: @unchecked Sendable {
 /// Sembol bulunamazsa hiçbir şey yapmaz: parmak sayısı 0 kalır ve Dock hareketi eskisi gibi
 /// her parmak sayısında yakalanır.
 final class TrackpadTouches: @unchecked Sendable {
-    var onOpen: (@MainActor () -> Void)?
-    var onClose: (@MainActor () -> Void)?
-    var onDown: (@MainActor () -> Void)?
-    var overlayIsOpen: (() -> Bool)?
-    var capturesDown: (() -> Bool)?
+    /// Dock olayı gelmemiş bir oturumda tanınan kaydırma; tetiklendiyse `true` döner.
+    var onSwipe: ((MultiFingerSwipe.Swipe) -> Bool)?
 
     private typealias CreateList = @convention(c) () -> Unmanaged<CFArray>?
     private typealias FrameCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, Int32, Double, Int32) -> Int32
@@ -243,16 +247,11 @@ final class TrackpadTouches: @unchecked Sendable {
     private static let positionOffset = 32
 
     private let lock = NSLock()
-    private var recognizer = MultiFingerSwipe(fingers: 3)
+    private var recognizer = MultiFingerSwipe()
     private var dockHandled = false
+    private var firedInSession = false
     private var devices: [AnyObject] = []
     private var sessionStart: Double?
-
-    func setFingers(_ count: Int) {
-        lock.lock()
-        recognizer.fingers = count
-        lock.unlock()
-    }
 
     var sessionFingers: Int {
         lock.lock()
@@ -260,11 +259,13 @@ final class TrackpadTouches: @unchecked Sendable {
         return recognizer.sessionFingers
     }
 
-    /// Bu oturumu Dock olayı işliyor; ham dokunmadan ikinci kez tetiklenmesin.
-    func markDockHandled() {
+    /// Bu oturumu Dock olayı işliyor; ham dokunmadan ikinci kez tetiklenmesin. Ham dokunmalar zaten
+    /// tetiklediyse `true`.
+    func markDockHandled() -> Bool {
         lock.lock()
+        defer { lock.unlock() }
         dockHandled = true
-        lock.unlock()
+        return firedInSession
     }
 
     func start() {
@@ -314,12 +315,9 @@ final class TrackpadTouches: @unchecked Sendable {
                 points.append(CGPoint(x: CGFloat(x), y: CGFloat(y)))
             }
         }
-        let open = overlayIsOpen?() ?? false
-        let takesDown = capturesDown?() ?? false
-
         lock.lock()
         let fingersBefore = recognizer.sessionFingers
-        let action = recognizer.handle(points, overlayOpen: open, capturesDown: takesDown)
+        let swipe = recognizer.handle(points)
         let handledByDock = dockHandled
         if points.isEmpty {
             if fingersBefore >= 3, let start = sessionStart {
@@ -327,24 +325,17 @@ final class TrackpadTouches: @unchecked Sendable {
                 DispatchQueue.main.async { DockTrace.log(summary) }
             }
             dockHandled = false
+            firedInSession = false
             sessionStart = nil
         } else if sessionStart == nil {
             sessionStart = timestamp
         }
         lock.unlock()
 
-        guard !handledByDock else { return }
-        switch action {
-        case .none: break
-        case .open:
-            DispatchQueue.main.async { [weak self] in
-                DockTrace.log("ham dokunmayla acildi")
-                MainActor.assumeIsolated { self?.onOpen?() }
-            }
-        case .close:
-            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onClose?() } }
-        case .down:
-            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onDown?() } }
-        }
+        guard !handledByDock, let swipe, onSwipe?(swipe) == true else { return }
+        lock.lock()
+        firedInSession = true
+        lock.unlock()
+        DispatchQueue.main.async { DockTrace.log("ham dokunmayla: \(swipe.fingers) parmak \(swipe.direction.rawValue)") }
     }
 }

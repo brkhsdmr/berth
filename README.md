@@ -25,6 +25,8 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **Dock and taskbar previews.** Hover an icon to see that app's windows on every desktop.
 - **Mac ↔ Windows bridge.** When you're connected to a Windows PC with Microsoft's Windows App (Remote Desktop), swiping up on the Mac trackpad opens Berth on that PC instead, and swiping down shows the windows of the app in front there. Several PCs can connect to one Mac.
 - **Mouse speed and acceleration, separately (macOS, optional).** macOS ties a mouse's speed to its acceleration curve. Berth can set them apart for each external mouse, closer to Windows' "Enhance pointer precision": speed for short moves, acceleration for long ones.
+- **Trackpad gestures in one table (macOS).** Choose what three- and four-finger swipes up and down do: the Berth scene, Mission Control, App Exposé or nothing. macOS's own setting is updated to match, including combinations System Settings can't show.
+- **Windows-like modifier keys (macOS).** One switch for the built-in keyboard (Control → Globe, Command → Control, Globe → Command) and one per Windows keyboard (Ctrl → ⌘, Windows → ⌥, Alt → ⌃), written to macOS's own Modifier Keys setting. Optionally lifted while Windows App is in front, so Ctrl stays Ctrl on the remote PC.
 - **Edge switching (macOS, optional).** Push the pointer against the left or right edge of the screen to move one desktop over.
 - **Private by design.** No account, no analytics, no network unless you turn on the Mac–Windows bridge. See [privacy](store/privacy.md).
 

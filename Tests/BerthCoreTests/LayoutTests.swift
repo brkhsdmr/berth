@@ -492,66 +492,54 @@ final class WindowNamingTests: XCTestCase {
 }
 
 final class SwipeGestureTests: XCTestCase {
-    private func run(_ steps: [(Int64, Double, Double)], open: Bool = false, axis: Int64 = 2, capturesDown: Bool = false) -> (decisions: [SwipeGestureInterpreter.Decision], actions: [SwipeGestureInterpreter.Action]) {
+    private func run(_ steps: [(Int64, Double, Double)], axis: Int64 = 2,
+                     capture: (SwipeDirection) -> Bool = { $0 == .up }) -> (decisions: [SwipeGestureInterpreter.Decision], fired: [SwipeDirection]) {
         var interpreter = SwipeGestureInterpreter()
         var decisions: [SwipeGestureInterpreter.Decision] = []
-        var actions: [SwipeGestureInterpreter.Action] = []
+        var fired: [SwipeDirection] = []
         for (phase, progress, velocity) in steps {
-            let (decision, action) = interpreter.handle(axis: axis, phase: phase, progress: progress, velocity: velocity, overlayOpen: open, capturesDown: capturesDown)
+            let (decision, direction) = interpreter.handle(axis: axis, phase: phase, progress: progress, velocity: velocity, capture: capture)
             decisions.append(decision)
-            if action != .none { actions.append(action) }
+            if let direction { fired.append(direction) }
         }
-        return (decisions, actions)
+        return (decisions, fired)
     }
 
     // Ölçülen hareketler.
     private let up: [(Int64, Double, Double)] = [(1, 0.016, 0), (2, 0.035, 0), (2, 0.2, 0), (2, 0.49, 0), (4, 0.64, 6.13)]
     private let down: [(Int64, Double, Double)] = [(1, -0.016, 0), (2, -0.2, 0), (2, -0.5, 0), (4, -0.598, -9.13)]
 
-    func testSwipeUpOpensOnceAndIsSwallowed() {
+    func testCapturedSwipeFiresOnceAndIsSwallowed() {
         let result = run(up)
-        XCTAssertEqual(result.actions, [.open])
+        XCTAssertEqual(result.fired, [.up])
         XCTAssertTrue(result.decisions.allSatisfy { $0 == .swallow })
+        XCTAssertEqual(run(down, capture: { _ in true }).fired, [.down])
     }
 
-    func testSwipeDownIsLeftToMacOS() {
+    func testUncapturedSwipeIsLeftToMacOS() {
         let result = run(down)
-        XCTAssertTrue(result.actions.isEmpty)
+        XCTAssertTrue(result.fired.isEmpty)
         XCTAssertTrue(result.decisions.allSatisfy { $0 == .pass })
     }
 
-    func testSwipeDownIsTakenForRemoteSession() {
-        let result = run(down, capturesDown: true)
-        XCTAssertEqual(result.actions, [.down])
-        XCTAssertTrue(result.decisions.allSatisfy { $0 == .swallow })
-        // Yukarı kaydırma etkilenmez; sahne açıkken aşağı yine kapatır.
-        XCTAssertEqual(run(up, capturesDown: true).actions, [.open])
-        XCTAssertEqual(run(down, open: true, capturesDown: true).actions, [.close])
+    func testCaptureIsAskedWithFirstDirection() {
+        var asked: [SwipeDirection] = []
+        _ = run(down, capture: { asked.append($0); return false })
+        _ = run(up, capture: { asked.append($0); return false })
+        XCTAssertEqual(asked, [.down, .up])
     }
 
-    func testSwipeDownClosesWhenOpen() {
-        let result = run(down, open: true)
-        XCTAssertEqual(result.actions, [.close])
-        XCTAssertTrue(result.decisions.allSatisfy { $0 == .swallow })
+    func testTinyTouchDoesNotFire() {
+        XCTAssertTrue(run([(1, 0.01, 0), (2, 0.03, 0), (4, 0.05, 0.1)]).fired.isEmpty)
     }
 
-    func testSwipeUpWhenOpenDoesNothingButStaysOurs() {
-        let result = run(up, open: true)
-        XCTAssertTrue(result.actions.isEmpty)
-        XCTAssertTrue(result.decisions.allSatisfy { $0 == .swallow })
-    }
-
-    func testTinyTouchDoesNotOpen() {
-        XCTAssertTrue(run([(1, 0.01, 0), (2, 0.03, 0), (4, 0.05, 0.1)]).actions.isEmpty)
-    }
-
-    func testFlickOpens() {
-        XCTAssertEqual(run([(1, 0.01, 0), (2, 0.05, 0), (4, 0.08, 4)]).actions, [.open])
+    func testFlickFires() {
+        XCTAssertEqual(run([(1, 0.01, 0), (2, 0.05, 0), (4, 0.08, 4)]).fired, [.up])
     }
 
     func testHorizontalSwipesAreUntouched() {
-        let result = run(up, axis: 1)
-        XCTAssertTrue(result.actions.isEmpty)
+        let result = run(up, axis: 1, capture: { _ in true })
+        XCTAssertTrue(result.fired.isEmpty)
         XCTAssertTrue(result.decisions.allSatisfy { $0 == .pass })
     }
 
@@ -561,12 +549,78 @@ final class SwipeGestureTests: XCTestCase {
 
     func testCancelledGestureDoesNotFireLater() {
         let result = run([(1, 0.01, 0), (8, 0.05, 0), (2, 0.5, 0)])
-        XCTAssertTrue(result.actions.isEmpty)
+        XCTAssertTrue(result.fired.isEmpty)
         XCTAssertEqual(result.decisions.last, .pass)
     }
 
     func testGesturesAreIndependent() {
-        XCTAssertEqual(run(up + up).actions, [.open, .open])
+        XCTAssertEqual(run(up + up).fired, [.up, .up])
+    }
+}
+
+final class TrackpadGestureMapTests: XCTestCase {
+    // Burak'ın Mac'i: 3 ve 4 parmak dikey açık, Mission Control ve App Exposé açık, sahne 3 parmak.
+    private let system = SystemGestures(vertical: [3: true, 4: true], missionControl: true, appExpose: true)
+
+    func testMigrationKeepsMacOSAndPutsSceneOnChosenFingers() {
+        let map = TrackpadGestureMap.migrated(sceneFingers: 3, system: system)
+        XCTAssertEqual(map[3, .up], .scene)
+        XCTAssertEqual(map[3, .down], .appExpose)
+        XCTAssertEqual(map[4, .up], .missionControl)
+        XCTAssertEqual(map[4, .down], .appExpose)
+        let off = TrackpadGestureMap.migrated(sceneFingers: 0, system: SystemGestures(vertical: [3: true], missionControl: true, appExpose: false))
+        XCTAssertEqual(off[3, .up], .missionControl)
+        XCTAssertEqual(off[3, .down], .nothing)
+        XCTAssertEqual(off[4, .up], .nothing)
+    }
+
+    func testNativeActionsPassAndOthersAreCaptured() {
+        let map = TrackpadGestureMap.migrated(sceneFingers: 3, system: system)
+        func captures(_ fingers: Int, _ direction: SwipeDirection, open: Bool = false, remote: Bool = false) -> Bool {
+            GestureRouting.captures(fingers: fingers, direction: direction, map: map, system: system, overlayOpen: open, remoteDown: remote)
+        }
+        XCTAssertTrue(captures(3, .up))
+        XCTAssertFalse(captures(3, .down))
+        XCTAssertFalse(captures(4, .up))
+        XCTAssertTrue(captures(3, .down, remote: true), "App Exposé Windows oturumuna gider")
+        XCTAssertTrue(captures(4, .up, open: true), "sahne açıkken her hareket Berth'ün")
+        var quiet = map
+        quiet[4, .down] = .nothing
+        XCTAssertTrue(GestureRouting.captures(fingers: 4, direction: .down, map: quiet, system: system, overlayOpen: false, remoteDown: false),
+                      "macOS'un yapacağı iş istenmiyorsa hareket yutulur")
+    }
+
+    func testMacOSDoingSomethingElseIsOverridden() {
+        let missionControlOff = SystemGestures(vertical: [3: true, 4: true], missionControl: false, appExpose: true)
+        var map = TrackpadGestureMap()
+        map[4, .up] = .missionControl
+        XCTAssertTrue(GestureRouting.captures(fingers: 4, direction: .up, map: map, system: missionControlOff, overlayOpen: false, remoteDown: false))
+        XCTAssertEqual(GestureRouting.outcome(fingers: 4, direction: .up, map: map, overlayOpen: false), .perform(.missionControl))
+    }
+
+    func testOutcomeWhenOpen() {
+        let map = TrackpadGestureMap.migrated(sceneFingers: 3, system: system)
+        XCTAssertEqual(GestureRouting.outcome(fingers: 4, direction: .down, map: map, overlayOpen: true), .close)
+        XCTAssertEqual(GestureRouting.outcome(fingers: 3, direction: .up, map: map, overlayOpen: true), .none)
+        XCTAssertEqual(GestureRouting.outcome(fingers: 3, direction: .up, map: map, overlayOpen: false), .perform(.scene))
+        XCTAssertEqual(GestureRouting.fingers(0), 3)
+    }
+
+    func testSystemEquivalent() {
+        var map = TrackpadGestureMap()
+        map[3, .up] = .scene
+        map[3, .down] = .appExpose
+        map[4, .up] = .missionControl
+        XCTAssertEqual(map.systemEquivalent, SystemGestures(vertical: [3: true, 4: true], missionControl: true, appExpose: true))
+        var none = TrackpadGestureMap()
+        none[4, .down] = .appExpose
+        XCTAssertEqual(none.systemEquivalent, SystemGestures(vertical: [3: false, 4: true], missionControl: false, appExpose: true))
+    }
+
+    func testRoundTripsThroughDictionary() {
+        let map = TrackpadGestureMap.migrated(sceneFingers: 4, system: system)
+        XCTAssertEqual(TrackpadGestureMap(dictionary: map.dictionary), map)
+        XCTAssertEqual(TrackpadGestureMap(dictionary: ["3-up": "bogus"]), TrackpadGestureMap())
     }
 }
 
@@ -585,57 +639,40 @@ final class OpenTriggerTests: XCTestCase {
         XCTAssertEqual(ScreenCorner.corner(of: CGPoint(x: 3431, y: -200), in: second), .bottomRight)
     }
 
-    private func swipe(_ fingers: Int, count: Int, dy: CGFloat, dx: CGFloat = 0, open: Bool = false) -> [MultiFingerSwipe.Action] {
-        var recognizer = MultiFingerSwipe(fingers: fingers)
-        var actions: [MultiFingerSwipe.Action] = []
+    private func swipe(count: Int, dy: CGFloat, dx: CGFloat = 0) -> [MultiFingerSwipe.Swipe] {
+        var recognizer = MultiFingerSwipe()
+        var result: [MultiFingerSwipe.Swipe] = []
         for step in 0...10 {
             let t = CGFloat(step) / 10
             let points = (0..<count).map { CGPoint(x: 0.4 + CGFloat($0) * 0.08 + dx * t, y: 0.3 + dy * t) }
-            actions.append(recognizer.handle(points, overlayOpen: open))
+            if let swipe = recognizer.handle(points) { result.append(swipe) }
         }
-        actions.append(recognizer.handle([], overlayOpen: open))
-        return actions.filter { $0 != .none }
+        _ = recognizer.handle([])
+        return result
     }
 
-    func testOpensOnceWithChosenFingers() {
-        XCTAssertEqual(swipe(3, count: 3, dy: 0.3), [.open])
-        XCTAssertEqual(swipe(4, count: 4, dy: 0.3), [.open])
+    func testRecognizesThreeAndFourFingersBothWays() {
+        XCTAssertEqual(swipe(count: 3, dy: 0.3), [.init(fingers: 3, direction: .up)])
+        XCTAssertEqual(swipe(count: 4, dy: -0.3), [.init(fingers: 4, direction: .down)])
     }
 
-    func testIgnoresOtherFingerCounts() {
-        XCTAssertEqual(swipe(3, count: 4, dy: 0.3), [])
-        XCTAssertEqual(swipe(4, count: 3, dy: 0.3), [])
-        XCTAssertEqual(swipe(0, count: 3, dy: 0.3), [])
+    func testIgnoresOtherCountsShortAndHorizontal() {
+        XCTAssertEqual(swipe(count: 2, dy: 0.3), [])
+        XCTAssertEqual(swipe(count: 5, dy: 0.3), [])
+        XCTAssertEqual(swipe(count: 3, dy: 0.08), [])
+        XCTAssertEqual(swipe(count: 3, dy: 0.2, dx: 0.4), [])
     }
 
-    func testIgnoresShortHorizontalAndDownWhenClosed() {
-        XCTAssertEqual(swipe(3, count: 3, dy: 0.08), [])
-        XCTAssertEqual(swipe(3, count: 3, dy: 0.2, dx: 0.4), [])
-        XCTAssertEqual(swipe(3, count: 3, dy: -0.3), [])
-    }
-
-    func testDownGoesToRemoteSessionWhenCaptured() {
-        var recognizer = MultiFingerSwipe(fingers: 3)
+    func testAddedFingerChangesTheCount() {
+        var recognizer = MultiFingerSwipe()
         let three = { (y: CGFloat) in (0..<3).map { CGPoint(x: 0.4 + CGFloat($0) * 0.1, y: y) } }
-        _ = recognizer.handle(three(0.6), overlayOpen: false, capturesDown: true)
-        XCTAssertEqual(recognizer.handle(three(0.3), overlayOpen: false, capturesDown: true), .down)
-    }
-
-    func testDownClosesWhenOpen() {
-        XCTAssertEqual(swipe(3, count: 3, dy: -0.3, open: true), [.close])
-        XCTAssertEqual(swipe(3, count: 3, dy: 0.3, open: true), [])
-    }
-
-    func testMoreFingersInSessionCancels() {
-        var recognizer = MultiFingerSwipe(fingers: 3)
-        let three = { (y: CGFloat) in (0..<3).map { CGPoint(x: 0.4 + CGFloat($0) * 0.1, y: y) } }
-        _ = recognizer.handle(three(0.3), overlayOpen: false)
-        _ = recognizer.handle(three(0.3) + [CGPoint(x: 0.9, y: 0.3)], overlayOpen: false)
-        XCTAssertEqual(recognizer.handle(three(0.3), overlayOpen: false), .none)
-        XCTAssertEqual(recognizer.handle(three(0.6), overlayOpen: false), .none)
-        _ = recognizer.handle([], overlayOpen: false)
-        _ = recognizer.handle(three(0.3), overlayOpen: false)
-        XCTAssertEqual(recognizer.handle(three(0.6), overlayOpen: false), .open)
+        _ = recognizer.handle(three(0.3))
+        _ = recognizer.handle(three(0.3) + [CGPoint(x: 0.9, y: 0.3)])
+        XCTAssertNil(recognizer.handle(three(0.6)), "dört parmaklık oturumda üç parmak tetiklemez")
+        XCTAssertEqual(recognizer.sessionFingers, 4)
+        _ = recognizer.handle([])
+        _ = recognizer.handle(three(0.3))
+        XCTAssertEqual(recognizer.handle(three(0.6)), .init(fingers: 3, direction: .up))
     }
 }
 
@@ -770,5 +807,26 @@ final class EdgeSwitchTests: XCTestCase {
         XCTAssertNil(EdgeSwitch.side(at: CGPoint(x: 1511, y: 491), screens: screens, band: 0.5, margin: 1))
         XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 0, y: 491), screens: screens, band: 0.5, margin: 1), .left)
         XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 3431, y: 540), screens: screens, band: 0.5, margin: 1), .right)
+    }
+}
+
+final class ModifierMappingTests: XCTestCase {
+    func testMacPresetMatchesWhatSystemSettingsWrote() {
+        // Burak'ın Mac'inde Sistem Ayarları'nın yazdığı (sayısal değerler `defaults` çıktısından).
+        let written = [
+            ModifierPair(30064771299, 30064771296), ModifierPair(1095216660483, 30064771303),
+            ModifierPair(30064771302, 30064771302), ModifierPair(280379760050179, 30064771299),
+            ModifierPair(30064771303, 30064771300), ModifierPair(30064771300, 1095216660483),
+            ModifierPair(30064771298, 30064771298), ModifierPair(30064771296, 1095216660483),
+        ]
+        XCTAssertEqual(ModifierPreset.effective(written), ModifierPreset.macWindowsLike)
+    }
+
+    func testKeysAndJSON() {
+        XCTAssertEqual(ModifierPreset.preferenceKey(vendor: 1118, product: 2098), "com.apple.keyboard.modifiermapping.1118-2098-0")
+        XCTAssertEqual(ModifierPreset.propertyJSON([]), "{\"HIDKeyboardModifierMappingPairs\":[]}")
+        XCTAssertEqual(ModifierPreset.propertyJSON([ModifierPair(ModifierKey.leftControl, ModifierKey.leftCommand)]),
+                       "{\"HIDKeyboardModifierMappingPairs\":[{\"HIDKeyboardModifierMappingSrc\":30064771296,\"HIDKeyboardModifierMappingDst\":30064771299}]}")
+        XCTAssertTrue(ModifierPreset.effective([ModifierPair(1, 1)]).isEmpty)
     }
 }
