@@ -45,6 +45,7 @@ Yalnızca debug derlemesinde. macOS'ta `DistributedNotificationCenter` bildiriml
 | `searchPreview` | sorgu (boş: kapat) | sahneyi aramayla aç |
 | `settings`, `settingsPage` | sayfa raw değeri | ayarları aç |
 | `dockPreview` | bundle id (boş: kapat) | o Dock simgesinin önizlemesini aç ve açık tut |
+| `edgeSwitchTest` | `left` / `right` | kenar geçişinin masaüstü değiştirmesini dene |
 | `remoteToggle`, `layoutCapture`, `snapTest` | | köprü ve düzen sınamaları |
 
 Ekran görüntüsü modu (debug): `defaults write io.github.brkhsdmr.berth skeletonPreviews -bool YES` pencere görüntüleri yerine iskelet çizer ve pencere başlıklarını gizler; `demoApps` sahneyi verilen uygulamalarla sınırlar. Bitince `defaults delete … skeletonPreviews` ve release derlemesini yeniden kur.

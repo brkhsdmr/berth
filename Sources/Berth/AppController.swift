@@ -72,6 +72,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     private let trackpadGesture = TrackpadGestureTap()
     private let hotCorner = HotCornerMonitor()
     private let mouseTuner = MouseTuner()
+    private let edgeSwitch = EdgeSwitchMonitor()
     private let layoutStore = WorkspaceLayoutStore()
     private var isClosing = false
     /// Tam ekrana alma ve sıralama sürerken imleç bizde: yeni açılış işi bozar.
@@ -164,13 +165,24 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         hotCorner.onTrigger = { [weak self] in self?.toggle() }
         settings.onHotCornerChange = { [weak self] corner, delay in self?.hotCorner.configure(corner: corner, delay: delay) }
         hotCorner.configure(corner: settings.hotCorner, delay: settings.hotCornerDelay)
-        mouseTuner.onStatus = { [weak self] status in self?.settings.mouseTuneStatus = status.text }
+        mouseTuner.onChange = { [weak self] connected, statuses in
+            self?.settings.connectedMice = connected
+            self?.settings.mouseStatuses = statuses
+        }
         settings.onMouseTuneChange = { [weak self] in
             guard let self else { return }
             self.mouseTuner.configure(self.settings.mouseTuneConfig)
         }
         mouseTuner.configure(settings.mouseTuneConfig)
-        settings.mouseTuneStatus = mouseTuner.status.text
+        edgeSwitch.isBlocked = { [weak self] in
+            guard let self else { return true }
+            return self.isOpen || self.isPlacingSpace
+        }
+        settings.onEdgeSwitchChange = { [weak self] in
+            guard let self else { return }
+            self.edgeSwitch.configure(enabled: self.settings.edgeSwitchEnabled, band: self.settings.edgeSwitchBand)
+        }
+        edgeSwitch.configure(enabled: settings.edgeSwitchEnabled, band: settings.edgeSwitchBand)
         settings.onShortcutChange = { [weak self] shortcut in
             guard let self else { return false }
             // Kısayol kapalıyken yalnızca kaydedilir; açılınca alınır.
@@ -215,6 +227,13 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
 
         #if DEBUG
         installSnapTestHook()
+        // Kenar geçişini betikten sınar: nesne "left" ya da "right".
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("io.github.brkhsdmr.berth.edgeSwitchTest"), object: nil, queue: .main
+        ) { note in
+            let side: EdgeSwitch.Side = (note.object as? String) == "left" ? .left : .right
+            MainActor.assumeIsolated { EdgeSwitchMonitor.switchSpace(side) }
+        }
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("io.github.brkhsdmr.berth.settings"),
             object: nil,

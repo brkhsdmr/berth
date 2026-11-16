@@ -24,7 +24,8 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **One app's windows (Windows).** Swipe down with three fingers, or press Ctrl+Alt+Shift+↓, to see every window of the app in front in a large grid, like App Exposé on the Mac.
 - **Dock and taskbar previews.** Hover an icon to see that app's windows on every desktop.
 - **Mac ↔ Windows bridge.** When you're connected to a Windows PC with Microsoft's Windows App (Remote Desktop), swiping up on the Mac trackpad opens Berth on that PC instead, and swiping down shows the windows of the app in front there. Several PCs can connect to one Mac.
-- **Mouse speed and acceleration, separately (macOS, optional).** macOS ties a mouse's speed to its acceleration curve. Berth can set them apart for an external mouse, closer to Windows' "Enhance pointer precision": speed for short moves, acceleration for long ones.
+- **Mouse speed and acceleration, separately (macOS, optional).** macOS ties a mouse's speed to its acceleration curve. Berth can set them apart for each external mouse, closer to Windows' "Enhance pointer precision": speed for short moves, acceleration for long ones.
+- **Edge switching (macOS, optional).** Push the pointer against the left or right edge of the screen to move one desktop over.
 - **Private by design.** No account, no analytics, no network unless you turn on the Mac–Windows bridge. See [privacy](store/privacy.md).
 
 <table><tr>

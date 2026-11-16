@@ -16,7 +16,7 @@ public enum MouseTune {
     public static let speedRange: ClosedRange<Double> = 0.5...4.0
     /// Sistem kaydırıcısı 3'te biter; üstü de kabul ediliyor, uzun mesafe için pay bırakıldı.
     public static let accelerationRange: ClosedRange<Double> = 0...5
-    /// Varsayılanlar: Windows'ta EPP açık, hız 20/20 hissine yakın (HP Z3700 ile denendi).
+    /// Berth'ün önerisi: Windows'ta EPP açık, hız 20/20 hissine yakın (HP Z3700 ile denendi).
     public static let defaultSpeed = 2.0
     public static let defaultAcceleration = 3.0
 
@@ -51,5 +51,37 @@ public enum MouseTune {
     public static func matchingJSON(mouseName: String) -> String {
         let escaped = mouseName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         return "{\"Product\":\"\(escaped)\",\"PrimaryUsagePage\":1,\"PrimaryUsage\":2}"
+    }
+}
+
+/// Bir farenin ayarı. Fareler ürün adıyla ayrı saklanır.
+public struct MouseProfile: Equatable, Sendable {
+    /// Kapalıyken fare macOS'un kendi ayarıyla çalışır.
+    public var enabled: Bool
+    public var speed: Double
+    public var acceleration: Double
+
+    public init(enabled: Bool = true, speed: Double = MouseTune.defaultSpeed, acceleration: Double = MouseTune.defaultAcceleration) {
+        self.enabled = enabled
+        self.speed = MouseTune.clampSpeed(speed)
+        self.acceleration = MouseTune.clampAcceleration(acceleration)
+    }
+
+    /// Berth'ün önerdiği değerler.
+    public static let suggested = MouseProfile()
+
+    /// macOS'un bu fareye kendi uyguladığının karşılığı: temel hız ve Sistem Ayarları'ndaki
+    /// izleme hızı (`com.apple.mouse.scaling`) ivme olarak.
+    public static func system(scaling: Double) -> MouseProfile {
+        MouseProfile(speed: 1, acceleration: scaling)
+    }
+
+    /// `UserDefaults` için.
+    public var dictionary: [String: Any] { ["enabled": enabled, "speed": speed, "acceleration": acceleration] }
+
+    public init(dictionary: [String: Any]) {
+        self.init(enabled: dictionary["enabled"] as? Bool ?? true,
+                  speed: (dictionary["speed"] as? NSNumber)?.doubleValue ?? MouseTune.defaultSpeed,
+                  acceleration: (dictionary["acceleration"] as? NSNumber)?.doubleValue ?? MouseTune.defaultAcceleration)
     }
 }

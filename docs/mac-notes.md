@@ -120,9 +120,15 @@ Parmak sayısı ham dokunmalardan okunur (`MultitouchSupport`, belgesiz, izin ge
 
 ## Harici fare: hız ve ivme ayrı
 
-macOS'ta "İzleme hızı" tek kaydırıcıdır: hızı artırmak ivme eğrisini de dikleştirir. Ayarlar > Fare açıkken seçilen harici fareye iki değer yazılır (`hidutil property --matching '{"Product":…}' --set …`, izin gerekmez, kalıcı değil):
+macOS'ta "İzleme hızı" tek kaydırıcıdır: hızı artırmak ivme eğrisini de dikleştirir. Ayarlar > Fare açıkken ayarı açık olan her bağlı harici fareye kendi iki değeri yazılır (fareler ürün adıyla ayrı saklanır, `mouseProfiles`; ayarı olmayan fare macOS'un ayarıyla çalışır) (`hidutil property --matching '{"Product":…}' --set …`, izin gerekmez, kalıcı değil):
 
 - Hız: `HIDPointerResolution` = 400 / hız DPI (16.16). Fare düşük DPI'lı gibi gösterilir, kısa hareket hızlanır.
 - İvme: `HIDMouseAcceleration` (16.16), sistem kaydırıcısıyla aynı ölçek (0 düz, 3 sistemin en diki, 5'e kadar).
 
-Fare ürün adıyla eşlenir: HP Z3700 üretici ve ürün kimliğini ters bildiriyor. macOS değerleri fare yeniden bağlanınca, uyanışta ve Sistem Ayarları'nda fare kaydırıcısı oynatılınca ezer; bu üç durumda yeniden yazılır (bağlanma ve uyanışta 1 ve 3 sn sonra). Kapatılınca ya da Berth kapanınca varsayılan çözünürlük ve `com.apple.mouse.scaling` geri yazılır. Varsayılanlar (2×, 3) HP Z3700 ile Windows'ta EPP açık, hız 20/20 hissine göre seçildi.
+Fare ürün adıyla eşlenir: HP Z3700 üretici ve ürün kimliğini ters bildiriyor. macOS değerleri fare yeniden bağlanınca, uyanışta ve Sistem Ayarları'nda fare kaydırıcısı oynatılınca ezer; bu üç durumda yeniden yazılır (bağlanma ve uyanışta 1 ve 3 sn sonra). Kapatılınca ya da Berth kapanınca varsayılan çözünürlük ve `com.apple.mouse.scaling` geri yazılır. "Berth önerisi" (2×, 3) HP Z3700 ile Windows'ta EPP açık, hız 20/20 hissine göre seçildi. "macOS değerleri" (1×, izleme hızı) farenin macOS'taki hissinin karşılığıdır.
+
+## Kenar geçişi
+
+Ayarlar > Fare > Kenar geçişi (varsayılan kapalı): imleç bir dış sol/sağ kenara, dikeyde seçilen ortadaki banda değince bir masaüstü geçilir. İmleç kenara dayanınca konumu değişmiyor, fare hareketi olayına güvenilmiyor; açıkken saniyede 30 kez yoklanır. Fare düğmesi basılıyken ve sahne açıkken tetiklenmez; tetikledikten sonra imleç kenardan 6 nokta ayrılmadan yeniden tetiklenmez.
+
+Geçiş Dock'a yapay dört parmak yatay kaydırma olayı göndererek yapılır (yöntem InstantSpaceSwitcher'dan, MIT): yapay ^←/^→ Dock'ta masaüstü değiştirmiyor, uzak masaüstü öndeyken klavye de oraya gidiyor. İlerleme 0,15 sn'de 8 adımda artar, macOS'un kayma animasyonu görünür. macOS 27'de Dock yapay olayı yok sayıyor; olay verisine ham IOHID yükü (alan 4205: kuyruk başlığı, akışkan dokunma hareketi, hız) eklenip ardından boş bir hareket olayı (tip 29) gönderilince kabul ediyor, yön de doğal kaydırma ayarına bağlı (ölçüldü, 27.2; iki yön de geçti). Hız eski yoldaki gibi 1: InstantSpaceSwitcher bitişte 9999 gönderiyor, kayma fırlatılmış gibi hızlı geliyor. Debug derlemede `edgeSwitchTest` bildirimi ("left"/"right") geçişi doğrudan dener.

@@ -24,7 +24,8 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **Bir uygulamanın pencereleri (Windows).** Üç parmakla aşağı kaydırınca ya da Ctrl+Alt+Shift+↓ ile öndeki uygulamanın tüm pencereleri büyük bir ızgarada görünür; Mac'teki App Exposé gibi.
 - **Dock ve görev çubuğu önizlemeleri.** Bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki pencereleri görünür.
 - **Mac ↔ Windows köprüsü.** Microsoft'un Windows App'i (Uzak Masaüstü) ile bir Windows bilgisayara bağlıyken Mac trackpad'inde yukarı kaydırmak o bilgisayardaki Berth'i açar, aşağı kaydırmak oradaki öndeki uygulamanın pencerelerini gösterir. Bir Mac'e birden çok bilgisayar bağlanabilir.
-- **Farede hız ve ivme ayrı (macOS, isteğe bağlı).** macOS bir farenin hızını ivme eğrisine bağlar. Berth harici farede ikisini ayırabilir, Windows'taki "İşaretçi hassasiyetini artır" hissine yakın: hız kısa hareketi, ivme uzun hareketi belirler.
+- **Farede hız ve ivme ayrı (macOS, isteğe bağlı).** macOS bir farenin hızını ivme eğrisine bağlar. Berth her harici farede ikisini ayrı ayarlayabilir, Windows'taki "İşaretçi hassasiyetini artır" hissine yakın: hız kısa hareketi, ivme uzun hareketi belirler.
+- **Kenar geçişi (macOS, isteğe bağlı).** İmleci ekranın sol ya da sağ kenarına dayayınca bir masaüstü o yana geçilir.
 - **Gizlilik.** Hesap yok, analiz yok. Mac–Windows köprüsünü açmadıkça ağ bağlantısı da yok. Bkz. [gizlilik](store/privacy.md).
 
 <table><tr>

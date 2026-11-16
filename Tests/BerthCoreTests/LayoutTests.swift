@@ -730,3 +730,45 @@ final class MouseTuneTests: XCTestCase {
                        "{\"Product\":\"HP \\\"Z\\\" \\\\ Mouse\",\"PrimaryUsagePage\":1,\"PrimaryUsage\":2}")
     }
 }
+
+final class MouseProfileTests: XCTestCase {
+    func testRoundTripsThroughDictionary() {
+        let profile = MouseProfile(enabled: false, speed: 3.1, acceleration: 2.5)
+        XCTAssertEqual(MouseProfile(dictionary: profile.dictionary), profile)
+    }
+
+    func testMissingOrWrongValuesFallBackAndClamp() {
+        XCTAssertEqual(MouseProfile(dictionary: [:]), .suggested)
+        XCTAssertEqual(MouseProfile(dictionary: ["speed": 9, "acceleration": -2]), MouseProfile(speed: 4, acceleration: 0))
+    }
+
+    func testSystemProfileMatchesMacOSValues() {
+        let system = MouseProfile.system(scaling: 0.6875)
+        XCTAssertEqual(MouseTune.propertiesJSON(speed: system.speed, acceleration: system.acceleration),
+                       MouseTune.systemPropertiesJSON(scaling: 0.6875))
+    }
+}
+
+final class EdgeSwitchTests: XCTestCase {
+    private let main = CGRect(x: 0, y: 0, width: 1512, height: 982)
+
+    func testOuterEdgesInsideBand() {
+        XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 0, y: 491), screens: [main], band: 0.5, margin: 1), .left)
+        XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 1511, y: 491), screens: [main], band: 0.5, margin: 1), .right)
+        XCTAssertNil(EdgeSwitch.side(at: CGPoint(x: 700, y: 491), screens: [main], band: 0.5, margin: 1))
+    }
+
+    func testTopAndBottomOutsideBandAreIgnored() {
+        XCTAssertNil(EdgeSwitch.side(at: CGPoint(x: 0, y: 900), screens: [main], band: 0.5, margin: 1))
+        XCTAssertNil(EdgeSwitch.side(at: CGPoint(x: 0, y: 50), screens: [main], band: 0.5, margin: 1))
+        XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 0, y: 900), screens: [main], band: 1, margin: 1), .left)
+    }
+
+    func testEdgeNextToAnotherScreenIsIgnored() {
+        let external = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+        let screens = [main, external]
+        XCTAssertNil(EdgeSwitch.side(at: CGPoint(x: 1511, y: 491), screens: screens, band: 0.5, margin: 1))
+        XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 0, y: 491), screens: screens, band: 0.5, margin: 1), .left)
+        XCTAssertEqual(EdgeSwitch.side(at: CGPoint(x: 3431, y: 540), screens: screens, band: 0.5, margin: 1), .right)
+    }
+}

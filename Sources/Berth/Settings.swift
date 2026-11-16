@@ -36,6 +36,10 @@ final class AppSettings: ObservableObject {
         static let blockedRemotes = "remoteBlockedNames"
         static let sessionAliases = "remoteSessionAliases"
         static let mouseTune = "mouseTuneEnabled"
+        static let mouseProfiles = "mouseProfiles"
+        static let edgeSwitch = "edgeSwitchEnabled"
+        static let edgeSwitchBand = "edgeSwitchBand"
+        // Tek fareli ilk sürüm; açılışta `mouseProfiles`'a taşınır.
         static let mouseName = "mouseTuneName"
         static let mouseSpeed = "mouseTuneSpeed"
         static let mouseAcceleration = "mouseTuneAcceleration"
@@ -169,25 +173,32 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(keepDockOpenDuringPreview, forKey: Key.keepDockOpen) }
     }
 
-    /// Harici farede hız ve ivme ayrı (`MouseTuner`). Kapalıyken fareye dokunulmaz.
+    /// Harici farede hız ve ivme ayrı (`MouseTuner`). Kapalıyken hiçbir fareye dokunulmaz.
     @Published var mouseTuneEnabled: Bool {
         didSet { UserDefaults.standard.set(mouseTuneEnabled, forKey: Key.mouseTune); onMouseTuneChange?() }
     }
-    /// Farenin ürün adı.
-    @Published var mouseTuneName: String {
-        didSet { UserDefaults.standard.set(mouseTuneName, forKey: Key.mouseName); onMouseTuneChange?() }
+    /// Farenin ürün adı → ayarı. Ayarı olmayan fare macOS'un kendi ayarıyla çalışır.
+    @Published var mouseProfiles: [String: MouseProfile] {
+        didSet {
+            UserDefaults.standard.set(mouseProfiles.mapValues(\.dictionary), forKey: Key.mouseProfiles)
+            onMouseTuneChange?()
+        }
     }
-    @Published var mouseSpeed: Double {
-        didSet { UserDefaults.standard.set(mouseSpeed, forKey: Key.mouseSpeed); onMouseTuneChange?() }
+    /// `MouseTuner`dan (kaydedilmez).
+    @Published var connectedMice: [String] = []
+    @Published var mouseStatuses: [String: MouseTuner.Status] = [:]
+
+    /// İmleç ekranın sol/sağ kenarına değince masaüstü değişir (`EdgeSwitchMonitor`).
+    @Published var edgeSwitchEnabled: Bool {
+        didSet { UserDefaults.standard.set(edgeSwitchEnabled, forKey: Key.edgeSwitch); onEdgeSwitchChange?() }
     }
-    @Published var mouseAcceleration: Double {
-        didSet { UserDefaults.standard.set(mouseAcceleration, forKey: Key.mouseAcceleration); onMouseTuneChange?() }
+    /// Kenarın dikeyde ortadaki etkin oranı.
+    @Published var edgeSwitchBand: Double {
+        didSet { UserDefaults.standard.set(edgeSwitchBand, forKey: Key.edgeSwitchBand); onEdgeSwitchChange?() }
     }
-    /// `MouseTuner`ın durumu (kaydedilmez).
-    @Published var mouseTuneStatus = ""
 
     var mouseTuneConfig: MouseTuner.Config {
-        MouseTuner.Config(enabled: mouseTuneEnabled, mouseName: mouseTuneName, speed: mouseSpeed, acceleration: mouseAcceleration)
+        MouseTuner.Config(enabled: mouseTuneEnabled, profiles: mouseProfiles)
     }
 
     @Published private(set) var shortcut: Shortcut
@@ -204,6 +215,7 @@ final class AppSettings: ObservableObject {
     var onBlockedRemotesChange: (([String]) -> Void)?
     var onFullScreenDockChange: ((Bool) -> Void)?
     var onMouseTuneChange: (() -> Void)?
+    var onEdgeSwitchChange: (() -> Void)?
     /// Kısayol alınabildiyse `true` döner.
     var onShortcutChange: ((Shortcut) -> Bool)?
 
@@ -232,9 +244,16 @@ final class AppSettings: ObservableObject {
         blockedRemotes = defaults.stringArray(forKey: Key.blockedRemotes) ?? []
         remoteSessionAliases = defaults.dictionary(forKey: Key.sessionAliases) as? [String: String] ?? [:]
         mouseTuneEnabled = defaults.object(forKey: Key.mouseTune) as? Bool ?? false
-        mouseTuneName = defaults.string(forKey: Key.mouseName) ?? ""
-        mouseSpeed = MouseTune.clampSpeed(defaults.object(forKey: Key.mouseSpeed) as? Double ?? MouseTune.defaultSpeed)
-        mouseAcceleration = MouseTune.clampAcceleration(defaults.object(forKey: Key.mouseAcceleration) as? Double ?? MouseTune.defaultAcceleration)
+        var profiles = (defaults.dictionary(forKey: Key.mouseProfiles) as? [String: [String: Any]] ?? [:]).mapValues(MouseProfile.init(dictionary:))
+        if let name = defaults.string(forKey: Key.mouseName), !name.isEmpty, profiles[name] == nil {
+            profiles[name] = MouseProfile(speed: defaults.object(forKey: Key.mouseSpeed) as? Double ?? MouseTune.defaultSpeed,
+                                          acceleration: defaults.object(forKey: Key.mouseAcceleration) as? Double ?? MouseTune.defaultAcceleration)
+            defaults.set(profiles.mapValues(\.dictionary), forKey: Key.mouseProfiles)
+        }
+        for key in [Key.mouseName, Key.mouseSpeed, Key.mouseAcceleration] { defaults.removeObject(forKey: key) }
+        mouseProfiles = profiles
+        edgeSwitchEnabled = defaults.object(forKey: Key.edgeSwitch) as? Bool ?? false
+        edgeSwitchBand = defaults.object(forKey: Key.edgeSwitchBand) as? Double ?? EdgeSwitch.defaultBand
         // İlk açılışta izin istenmez: izni zaten verilmişse açık, yoksa kapalı başlar.
         windowPreviewsEnabled = defaults.object(forKey: Key.windowPreviews) as? Bool ?? Permissions.screenRecording
         if let data = defaults.data(forKey: Key.shortcut),
@@ -896,75 +915,124 @@ private struct UsageTab: View {
     }
 }
 
-/// Harici fare: hız ve ivme ayrı (`MouseTuner`).
+/// Harici fare: hız ve ivme ayrı, her fareye kendi ayarı (`MouseTuner`).
 private struct MouseTab: View {
     @ObservedObject var settings: AppSettings
-    @State private var mice: [String] = []
-    // Kaydırıcı sürüklenirken her adımda hidutil çalışmasın: bırakınca uygulanır.
-    @State private var speed = MouseTune.defaultSpeed
-    @State private var acceleration = MouseTune.defaultAcceleration
 
     var body: some View {
         Form {
             Section {
-                Toggle(tx("Harici farede hızı ve ivmeyi ayrı ayarla", "Set speed and acceleration separately for an external mouse"),
+                Toggle(tx("Harici farelerde hızı ve ivmeyi ayrı ayarla", "Set speed and acceleration separately for external mice"),
                        isOn: Binding(get: { settings.mouseTuneEnabled }, set: { enabled in
-                           if enabled, settings.mouseTuneName.isEmpty, mice.count == 1 { settings.mouseTuneName = mice[0] }
+                           // İlk açılışta tek fare varsa onun ayarı da açılsın.
+                           if enabled, settings.mouseProfiles.isEmpty, settings.connectedMice.count == 1 {
+                               settings.mouseProfiles[settings.connectedMice[0]] = .suggested
+                           }
                            settings.mouseTuneEnabled = enabled
                        }))
-                Text(tx("macOS'ta izleme hızını artırmak ivmeyi de dikleştirir: kısa harekette imleç durgun kalır, hızlı harekette fırlar. Burada ikisi ayrı, Windows'taki \"İşaretçi hassasiyetini artır\" hissine yakın: hız kısa mesafeyi, ivme uzun ve hızlı hareketi belirler. Trackpad etkilenmez.",
-                        "On macOS, raising the tracking speed also steepens acceleration: the pointer feels sluggish on short moves and jumps on fast ones. Here the two are separate, closer to Windows' \"Enhance pointer precision\": speed sets short moves, acceleration sets long, fast ones. The trackpad isn't affected."))
+                Text(tx("macOS'ta izleme hızını artırmak ivmeyi de dikleştirir: kısa harekette imleç durgun kalır, hızlı harekette fırlar. Burada ikisi ayrı, Windows'taki \"İşaretçi hassasiyetini artır\" hissine yakın: hız kısa mesafeyi, ivme uzun ve hızlı hareketi belirler. Her farenin ayarı ayrı saklanır; trackpad etkilenmez.",
+                        "On macOS, raising the tracking speed also steepens acceleration: the pointer feels sluggish on short moves and jumps on fast ones. Here the two are separate, closer to Windows' \"Enhance pointer precision\": speed sets short moves, acceleration sets long, fast ones. Each mouse keeps its own setting; the trackpad isn't affected."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                if settings.mouseTuneEnabled {
-                    Text(settings.mouseTuneStatus).font(.callout).foregroundStyle(Color.accentColor)
+            }
+            if mice.isEmpty {
+                Section {
+                    Text(tx("Bağlı harici fare yok. Bir fare bağlanınca burada görünür.", "No external mouse connected. A mouse shows up here when it connects."))
+                        .font(.callout).foregroundStyle(.secondary)
                 }
             }
+            ForEach(mice, id: \.self) { name in
+                MouseProfileSection(settings: settings, name: name)
+            }
+            Section(tx("Kenar geçişi", "Edge switching")) {
+                Toggle(tx("İmleç sol ya da sağ kenara değince masaüstünü değiştir", "Switch desktops when the pointer hits the left or right edge"),
+                       isOn: $settings.edgeSwitchEnabled)
+                Picker(tx("Kenarın etkin bölümü", "Active part of the edge"), selection: $settings.edgeSwitchBand) {
+                    ForEach(EdgeSwitch.bandChoices, id: \.self) { ratio in
+                        Text(ratio >= 1 ? tx("Tamamı", "All of it") : tx("Ortadaki %\(Int(ratio * 100))", "Middle \(Int(ratio * 100))%")).tag(ratio)
+                    }
+                }
+                .disabled(!settings.edgeSwitchEnabled)
+                Text(tx("İmleç ekranın sol kenarına değince bir masaüstü sola, sağ kenarına değince sağa geçilir. Yalnızca dış kenarlar: yanında başka ekran olan kenar sayılmaz. Fare düğmesi basılıyken (pencere sürüklerken, boyutlandırırken) ve sahne açıkken tetiklenmez; yeniden geçmek için imleci kenardan biraz ayırın. Fare ve trackpad için geçerli, Erişilebilirlik izni gerekir.",
+                        "When the pointer touches the left edge of the screen you move one desktop left; the right edge, one desktop right. Outer edges only: an edge next to another display doesn't count. Not triggered while a mouse button is held (dragging or resizing a window) or while the scene is open; move the pointer off the edge to switch again. Works with mouse and trackpad; needs Accessibility access."))
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             Section {
-                Picker(tx("Fare", "Mouse"), selection: $settings.mouseTuneName) {
-                    if settings.mouseTuneName.isEmpty { Text(tx("Seçin", "Choose")).tag("") }
-                    ForEach(choices, id: \.self) { name in
-                        Text(mice.contains(name) ? name : tx("\(name) (bağlı değil)", "\(name) (not connected)")).tag(name)
-                    }
-                }
-                .disabled(!settings.mouseTuneEnabled)
-                if mice.isEmpty {
-                    Text(tx("Bağlı harici fare yok.", "No external mouse connected.")).font(.callout).foregroundStyle(.secondary)
-                }
-                slider(tx("Hız", "Speed"), value: $speed, range: MouseTune.speedRange, label: String(format: "%.2f×", speed)) {
-                    settings.mouseSpeed = speed
-                }
-                slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
-                       label: String(format: "%.2f", acceleration)) {
-                    settings.mouseAcceleration = acceleration
-                }
-                HStack {
-                    Text(tx("Hız 1× macOS'un temel hızıdır; ivme 3 macOS'un en dik eğrisi. Sistem Ayarları > Fare'de imleç ivmesi açık kalmalı.",
-                            "Speed 1× is macOS's base speed; acceleration 3 is macOS's steepest curve. Keep pointer acceleration on in System Settings > Mouse."))
-                        .font(.callout).foregroundStyle(.secondary)
-                    Spacer()
-                    Button(tx("Varsayılan", "Defaults")) {
-                        speed = MouseTune.defaultSpeed
-                        acceleration = MouseTune.defaultAcceleration
-                        settings.mouseSpeed = speed
-                        settings.mouseAcceleration = acceleration
-                    }
-                    .disabled(!settings.mouseTuneEnabled)
-                }
+                Text(tx("Berth önerisi: hız 2×, ivme 3. Windows'ta \"İşaretçi hassasiyetini artır\" açık ve hız en yüksekteyken alınan hisse göre seçildi; kişisel ayarın değil, başlangıç noktası. macOS değerleri: hız 1× ve Sistem Ayarları > Fare'deki izleme hızı ivme olarak; fare macOS'taki gibi hissettirir, oradan ayarlamaya başlanabilir. Sistem Ayarları'nda imleç ivmesi açık kalmalı.",
+                        "Berth's suggestion: speed 2×, acceleration 3, chosen to match Windows with \"Enhance pointer precision\" on and the speed at maximum; a starting point, not your personal setting. macOS values: speed 1× and the tracking speed from System Settings > Mouse as acceleration; the mouse feels as it does on macOS and you can tune from there. Keep pointer acceleration on in System Settings."))
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            mice = MouseTuner.connectedMice()
-            speed = settings.mouseSpeed
-            acceleration = settings.mouseAcceleration
+    }
+
+    /// Bağlı fareler, ardından ayarı kayıtlı ama bağlı olmayanlar.
+    private var mice: [String] {
+        settings.connectedMice + settings.mouseProfiles.keys.filter { !settings.connectedMice.contains($0) }.sorted()
+    }
+}
+
+private struct MouseProfileSection: View {
+    @ObservedObject var settings: AppSettings
+    let name: String
+    // Kaydırıcı sürüklenirken her adımda hidutil çalışmasın: bırakınca uygulanır.
+    @State private var speed = MouseTune.defaultSpeed
+    @State private var acceleration = MouseTune.defaultAcceleration
+
+    private var profile: MouseProfile? { settings.mouseProfiles[name] }
+    private var active: Bool { settings.mouseTuneEnabled && profile?.enabled == true }
+    private var connected: Bool { settings.connectedMice.contains(name) }
+
+    var body: some View {
+        Section {
+            Toggle(tx("Bu farede Berth ayarını kullan", "Use Berth's setting for this mouse"), isOn: Binding(
+                get: { profile?.enabled == true },
+                set: { enabled in update { $0.enabled = enabled } }))
+                .disabled(!settings.mouseTuneEnabled)
+            if let status = settings.mouseStatuses[name] {
+                Text(status.text).font(.callout).foregroundStyle(status == .applied ? Color.accentColor : .secondary)
+            }
+            slider(tx("Hız", "Speed"), value: $speed, range: MouseTune.speedRange, label: String(format: "%.2f×", speed)) {
+                update { $0.speed = speed }
+            }
+            slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
+                   label: String(format: "%.2f", acceleration)) {
+                update { $0.acceleration = acceleration }
+            }
+            HStack {
+                Button(tx("Berth önerisi", "Berth's suggestion")) { set(.suggested) }
+                Button(tx("macOS değerleri", "macOS values")) { set(.system(scaling: MouseTuner.systemScaling)) }
+                Spacer()
+                if !connected {
+                    Button(tx("Bu fareyi unut", "Forget this mouse"), role: .destructive) { settings.mouseProfiles[name] = nil }
+                }
+            }
+            .disabled(!active && connected)
+        } header: {
+            Text(connected ? name : tx("\(name) (bağlı değil)", "\(name) (not connected)"))
+        }
+        .onAppear(perform: load)
+        .onChange(of: profile) { _, _ in load() }
+    }
+
+    private func load() {
+        let current = profile ?? .suggested
+        speed = current.speed
+        acceleration = current.acceleration
+    }
+
+    /// Hız ve ivmeyi değiştirir, açık/kapalıyı korur.
+    private func set(_ values: MouseProfile) {
+        update {
+            $0.speed = values.speed
+            $0.acceleration = values.acceleration
         }
     }
 
-    /// Bağlı fareler ve bağlı olmasa da seçili olan.
-    private var choices: [String] {
-        let name = settings.mouseTuneName
-        return name.isEmpty || mice.contains(name) ? mice : [name] + mice
+    private func update(_ change: (inout MouseProfile) -> Void) {
+        var next = profile ?? MouseProfile(enabled: false)
+        change(&next)
+        settings.mouseProfiles[name] = next
     }
 
     private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, label: String,
@@ -980,7 +1048,7 @@ private struct MouseTab: View {
                     .frame(width: 52, alignment: .trailing)
             }
         }
-        .disabled(!settings.mouseTuneEnabled)
+        .disabled(!active)
     }
 }
 
