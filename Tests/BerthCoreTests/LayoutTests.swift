@@ -830,3 +830,14 @@ final class ModifierMappingTests: XCTestCase {
         XCTAssertTrue(ModifierPreset.effective([ModifierPair(1, 1)]).isEmpty)
     }
 }
+
+final class EdgeSwitchHoldKeysTests: XCTestCase {
+    func testHeldAndDisplay() {
+        let hold: EdgeSwitch.HoldKeys = [.option, .command]
+        XCTAssertTrue(hold.isHeld(in: [.option, .command]))
+        XCTAssertTrue(hold.isHeld(in: [.option, .command, .shift]))
+        XCTAssertFalse(hold.isHeld(in: [.option]))
+        XCTAssertTrue(EdgeSwitch.HoldKeys().isHeld(in: []), "tuş seçilmediyse kenar yeter")
+        XCTAssertEqual(EdgeSwitch.HoldKeys([.command, .control, .function]).display, "fn ⌃⌘")
+    }
+}

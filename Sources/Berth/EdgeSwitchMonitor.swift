@@ -5,6 +5,8 @@ import BerthCore
 /// da sağa geçer (`EdgeSwitch`). Varsayılan kapalı.
 ///
 /// - Anlık dokunma yeter. Tetikledikten sonra imleç kenardan ayrılmadan yeniden tetiklenmez.
+/// - Basılı tutulacak niteleme tuşları seçildiyse yalnızca onlar basılıyken geçer; tuşa kenarda
+///   beklerken basmak da geçirir.
 /// - Fare düğmesi basılıyken tetiklenmez: pencere sürükleme, kenara yaslama ve boyutlandırma kenarı
 ///   kullanır. Sürükleme kenarda bitse bile imleç kenardan ayrılıp yeniden gelene kadar beklenir.
 /// - İmleç ekranın kenarına dayanınca konumu değişmez ve fare hareketi olayı güvenilir gelmez;
@@ -22,6 +24,7 @@ final class EdgeSwitchMonitor {
 
     private var enabled = false
     private var band = EdgeSwitch.defaultBand
+    private var hold = EdgeSwitch.HoldKeys()
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     /// Başlangıçta kapalı: imleç zaten kenardaysa açılır açılmaz tetiklemesin.
@@ -36,9 +39,10 @@ final class EdgeSwitchMonitor {
     /// Yeniden kurulmak için kenardan bu kadar uzaklaşmalı.
     private static let rearmMargin: CGFloat = 6
 
-    func configure(enabled: Bool, band: Double) {
+    func configure(enabled: Bool, band: Double, hold: EdgeSwitch.HoldKeys) {
         self.enabled = enabled
         self.band = band
+        self.hold = hold
         isArmed = false
         if enabled { installObservers() } else { removeObservers() }
         syncTimer()
@@ -70,6 +74,8 @@ final class EdgeSwitchMonitor {
             return
         }
         guard isArmed else { return }
+        // Tuş seçildiyse basılana kadar kenarda beklenir: önce kenara gelip sonra basmak da geçirir.
+        guard hold.isHeld(in: Self.pressedKeys) else { return }
         // Tetiklesin ya da tetiklemesin: yeni geçiş için kenardan ayrılmak gerekir.
         isArmed = false
         guard NSEvent.pressedMouseButtons == 0, !isBlocked(),
@@ -78,6 +84,18 @@ final class EdgeSwitchMonitor {
         else { return }
         lastSwitch = Date()
         Self.switchSpace(side)
+    }
+
+    /// Şu an basılı niteleme tuşları (olay izni gerekmez).
+    static var pressedKeys: EdgeSwitch.HoldKeys {
+        let flags = NSEvent.modifierFlags
+        var keys = EdgeSwitch.HoldKeys()
+        if flags.contains(.control) { keys.insert(.control) }
+        if flags.contains(.option) { keys.insert(.option) }
+        if flags.contains(.shift) { keys.insert(.shift) }
+        if flags.contains(.command) { keys.insert(.command) }
+        if flags.contains(.function) { keys.insert(.function) }
+        return keys
     }
 
     // MARK: Geçiş

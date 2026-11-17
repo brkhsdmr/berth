@@ -42,6 +42,7 @@ final class AppSettings: ObservableObject {
         static let edgeSwitch = "edgeSwitchEnabled"
         static let remoteKeyboardLift = "remoteKeyboardLift"
         static let edgeSwitchBand = "edgeSwitchBand"
+        static let edgeSwitchHold = "edgeSwitchHoldKeys"
         // Tek fareli ilk sürüm; açılışta `mouseProfiles`'a taşınır.
         static let mouseName = "mouseTuneName"
         static let mouseSpeed = "mouseTuneSpeed"
@@ -215,6 +216,10 @@ final class AppSettings: ObservableObject {
     @Published var edgeSwitchEnabled: Bool {
         didSet { UserDefaults.standard.set(edgeSwitchEnabled, forKey: Key.edgeSwitch); onEdgeSwitchChange?() }
     }
+    /// Geçiş için basılı tutulacak niteleme tuşları; boşsa kenara değmek yeter.
+    @Published var edgeSwitchHold: EdgeSwitch.HoldKeys {
+        didSet { UserDefaults.standard.set(edgeSwitchHold.rawValue, forKey: Key.edgeSwitchHold); onEdgeSwitchChange?() }
+    }
     /// Kenarın dikeyde ortadaki etkin oranı.
     @Published var edgeSwitchBand: Double {
         didSet { UserDefaults.standard.set(edgeSwitchBand, forKey: Key.edgeSwitchBand); onEdgeSwitchChange?() }
@@ -284,6 +289,7 @@ final class AppSettings: ObservableObject {
         edgeSwitchEnabled = defaults.object(forKey: Key.edgeSwitch) as? Bool ?? false
         remoteKeyboardLift = defaults.object(forKey: Key.remoteKeyboardLift) as? Bool ?? false
         edgeSwitchBand = defaults.object(forKey: Key.edgeSwitchBand) as? Double ?? EdgeSwitch.defaultBand
+        edgeSwitchHold = EdgeSwitch.HoldKeys(rawValue: defaults.integer(forKey: Key.edgeSwitchHold))
         // İlk açılışta izin istenmez: izni zaten verilmişse açık, yoksa kapalı başlar.
         windowPreviewsEnabled = defaults.object(forKey: Key.windowPreviews) as? Bool ?? Permissions.screenRecording
         if let data = defaults.data(forKey: Key.shortcut),
@@ -945,6 +951,63 @@ private struct UsageTab: View {
     }
 }
 
+/// Kenar geçişi için basılı tutulacak niteleme tuşları: kaydederken tuşlara basılıp bırakılır.
+private struct EdgeHoldRecorder: View {
+    @Binding var hold: EdgeSwitch.HoldKeys
+    @State private var recording = false
+    @State private var captured = EdgeSwitch.HoldKeys()
+    @State private var monitor: Any?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent(tx("Basılı tutulacak tuş", "Key to hold")) {
+                HStack(spacing: 8) {
+                    Text(recording ? (captured.isEmpty ? tx("Tuşlara basın…", "Press the keys…") : captured.display)
+                                   : (hold.isEmpty ? tx("Yok", "None") : hold.display))
+                        .foregroundStyle(recording || hold.isEmpty ? .secondary : .primary)
+                    Button(recording ? tx("Vazgeç", "Cancel") : tx("Kaydet", "Record")) { recording ? stop() : start() }
+                    if !hold.isEmpty, !recording {
+                        Button(tx("Kaldır", "Remove")) { hold = [] }
+                    }
+                }
+            }
+            Text(hold.isEmpty
+                 ? tx("Tuş seçilmezse kenara değmek yeter. Bir tuş seçilirse yalnızca o tuş basılıyken geçilir (⌃, ⌥, ⇧, ⌘, fn ya da birlikte).",
+                      "With no key, touching the edge is enough. With a key, you switch only while holding it (⌃, ⌥, ⇧, ⌘, fn or a combination).")
+                 : tx("\(hold.display) basılıyken imleci kenara dayayın; tuşa kenarda beklerken basmak da geçirir.",
+                      "Hold \(hold.display) and push the pointer against the edge; pressing it while waiting at the edge works too."))
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        .onDisappear(perform: stop)
+    }
+
+    private func start() {
+        captured = []
+        recording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
+            if event.type == .keyDown {
+                if Int(event.keyCode) == kVK_Escape { stop() }
+                return nil
+            }
+            let now = EdgeSwitchMonitor.pressedKeys
+            if now.isEmpty {
+                // Tümü bırakılınca o ana kadar birlikte basılanlar kaydedilir.
+                if !captured.isEmpty { hold = captured }
+                stop()
+            } else {
+                captured.formUnion(now)
+            }
+            return event
+        }
+    }
+
+    private func stop() {
+        recording = false
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+}
+
 /// Klavyelerin niteleme tuşları için hazır ayarlar. macOS'un kendi ayarına yazılır (Niteleme Tuşları).
 private struct KeyboardSections: View {
     @State private var keyboards: [KeyboardModifiers.Keyboard] = []
@@ -1091,6 +1154,8 @@ private struct MouseTab: View {
                     }
                 }
                 .disabled(!settings.edgeSwitchEnabled)
+                EdgeHoldRecorder(hold: $settings.edgeSwitchHold)
+                    .disabled(!settings.edgeSwitchEnabled)
                 Text(tx("İmleç ekranın sol kenarına değince bir masaüstü sola, sağ kenarına değince sağa geçilir. Yalnızca dış kenarlar: yanında başka ekran olan kenar sayılmaz. Fare düğmesi basılıyken (pencere sürüklerken, boyutlandırırken) ve sahne açıkken tetiklenmez; yeniden geçmek için imleci kenardan biraz ayırın. Fare ve trackpad için geçerli, Erişilebilirlik izni gerekir.",
                         "When the pointer touches the left edge of the screen you move one desktop left; the right edge, one desktop right. Outer edges only: an edge next to another display doesn't count. Not triggered while a mouse button is held (dragging or resizing a window) or while the scene is open; move the pointer off the edge to switch again. Works with mouse and trackpad; needs Accessibility access."))
                     .font(.callout).foregroundStyle(.secondary)

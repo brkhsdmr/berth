@@ -194,9 +194,9 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         }
         settings.onEdgeSwitchChange = { [weak self] in
             guard let self else { return }
-            self.edgeSwitch.configure(enabled: self.settings.edgeSwitchEnabled, band: self.settings.edgeSwitchBand)
+            self.edgeSwitch.configure(enabled: self.settings.edgeSwitchEnabled, band: self.settings.edgeSwitchBand, hold: self.settings.edgeSwitchHold)
         }
-        edgeSwitch.configure(enabled: settings.edgeSwitchEnabled, band: settings.edgeSwitchBand)
+        edgeSwitch.configure(enabled: settings.edgeSwitchEnabled, band: settings.edgeSwitchBand, hold: settings.edgeSwitchHold)
         settings.onRemoteKeyboardLiftChange = { [weak self] enabled in self?.remoteKeyboard.configure(enabled: enabled) }
         remoteKeyboard.configure(enabled: settings.remoteKeyboardLift)
         settings.onShortcutChange = { [weak self] shortcut in
