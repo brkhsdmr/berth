@@ -1194,14 +1194,17 @@ private struct MouseProfileSection: View {
                 set: { enabled in update { $0.enabled = enabled } }))
                 .disabled(!settings.mouseTuneEnabled)
             if let status = settings.mouseStatuses[name] {
-                Text(status.text).font(.callout).foregroundStyle(status == .applied ? Color.accentColor : .secondary)
+                Text(status.text).font(.callout)
+                    .foregroundStyle(status == .applied || status == .appliedFlat ? Color.accentColor : .secondary)
             }
             slider(tx("Hız", "Speed"), value: $speed, range: MouseTune.speedRange, label: String(format: "%.2f×", speed)) {
                 update { $0.speed = speed }
             }
-            slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
-                   label: String(format: "%.2f", acceleration)) {
-                update { $0.acceleration = acceleration }
+            if settings.mouseStatuses[name] != .appliedFlat {
+                slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
+                       label: String(format: "%.2f", acceleration)) {
+                    update { $0.acceleration = acceleration }
+                }
             }
             HStack {
                 Button(tx("Berth önerisi", "Berth's suggestion")) { set(.suggested) }

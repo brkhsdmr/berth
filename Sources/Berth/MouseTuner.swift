@@ -20,7 +20,7 @@ final class MouseTuner {
     }
 
     enum Status: Equatable {
-        case off, system, notConnected, applied, failed
+        case off, system, notConnected, applied, appliedFlat, failed
 
         var text: String {
             switch self {
@@ -28,6 +28,9 @@ final class MouseTuner {
             case .system: return tx("macOS'un kendi ayarı", "macOS's own setting")
             case .notConnected: return tx("Bağlı değil", "Not connected")
             case .applied: return tx("Berth ayarı uygulanıyor", "Berth's setting is active")
+            case .appliedFlat:
+                return tx("Berth ayarı uygulanıyor. Bu fare macOS'un ivme eğrisini değiştirmeye izin vermiyor; hız düz uygulanır, ivme ayarı yok.",
+                          "Berth's setting is active. This mouse doesn't let macOS's acceleration curve be changed; speed is applied flat, without acceleration.")
             case .failed: return tx("Uygulanamadı", "Couldn't apply")
             }
         }
@@ -88,8 +91,26 @@ final class MouseTuner {
         return names.sorted()
     }
 
-    private static func mouseMatching() -> NSMutableDictionary {
-        let matching = IOServiceMatching("IOHIDDevice") as NSMutableDictionary
+    /// Çözünürlüğü yok sayan fareler (DriverKit sürücüsü, ör. Bluetooth LE): hız düz ölçekle verilir
+    /// (bkz. `MouseTune`).
+    static func flatMice() -> Set<String> {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, mouseMatching(className: "AppleUserHIDEventService"), &iterator) == KERN_SUCCESS
+        else { return [] }
+        defer { IOObjectRelease(iterator) }
+        var names = Set<String>()
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            defer { IOObjectRelease(service) }
+            if let name = IORegistryEntryCreateCFProperty(service, kIOHIDProductKey as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? String {
+                names.insert(name)
+            }
+        }
+        return names
+    }
+
+    private static func mouseMatching(className: String = "IOHIDDevice") -> NSMutableDictionary {
+        let matching = IOServiceMatching(className) as NSMutableDictionary
         matching[kIOHIDPrimaryUsagePageKey] = kHIDPage_GenericDesktop
         matching[kIOHIDPrimaryUsageKey] = kHIDUsage_GD_Mouse
         return matching
@@ -98,6 +119,7 @@ final class MouseTuner {
     /// `force`: macOS değerleri ezmiş olabilir (bağlanma, uyanış, Sistem Ayarları), yeniden yaz.
     private func apply(force: Bool) {
         connected = Self.connectedMice()
+        let flat = Self.flatMice()
         var next: [String: Status] = [:]
         for name in Set(connected).union(config.profiles.keys) {
             let profile = config.profiles[name]
@@ -108,13 +130,17 @@ final class MouseTuner {
                 continue
             }
             if wanted, let profile {
+                let isFlat = flat.contains(name)
+                let applied: Status = isFlat ? .appliedFlat : .applied
                 if !force, tuned[name] == profile {
-                    next[name] = .applied
+                    next[name] = applied
                     continue
                 }
-                let ok = Self.write(MouseTune.propertiesJSON(speed: profile.speed, acceleration: profile.acceleration), mouseName: name)
+                let properties = isFlat ? MouseTune.flatPropertiesJSON(speed: profile.speed)
+                    : MouseTune.propertiesJSON(speed: profile.speed, acceleration: profile.acceleration)
+                let ok = Self.write(properties, mouseName: name)
                 tuned[name] = ok ? profile : nil
-                next[name] = ok ? .applied : .failed
+                next[name] = ok ? applied : .failed
             } else {
                 if tuned.removeValue(forKey: name) != nil { Self.restoreSystemValues(mouseName: name) }
                 next[name] = config.enabled ? .system : .off

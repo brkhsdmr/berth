@@ -755,11 +755,18 @@ final class MouseTuneTests: XCTestCase {
 
     func testPropertiesUseFixedPointAndClamp() {
         XCTAssertEqual(MouseTune.propertiesJSON(speed: 2, acceleration: 3),
-                       "{\"HIDPointerResolution\":13107200,\"HIDMouseAcceleration\":196608}")
+                       "{\"HIDUseLinearScalingMouseAcceleration\":0,\"HIDPointerResolution\":13107200,\"HIDMouseAcceleration\":196608}")
         XCTAssertEqual(MouseTune.propertiesJSON(speed: 2, acceleration: -1),
-                       "{\"HIDPointerResolution\":13107200,\"HIDMouseAcceleration\":0}")
+                       "{\"HIDUseLinearScalingMouseAcceleration\":0,\"HIDPointerResolution\":13107200,\"HIDMouseAcceleration\":0}")
         XCTAssertEqual(MouseTune.systemPropertiesJSON(scaling: 0.6875),
-                       "{\"HIDPointerResolution\":26214400,\"HIDMouseAcceleration\":45056}")
+                       "{\"HIDUseLinearScalingMouseAcceleration\":0,\"HIDPointerResolution\":26214400,\"HIDMouseAcceleration\":45056}")
+    }
+
+    func testFlatScaleUsesSpeedAsFactor() {
+        XCTAssertEqual(MouseTune.flatPropertiesJSON(speed: 4),
+                       "{\"HIDUseLinearScalingMouseAcceleration\":1,\"HIDMouseAcceleration\":262144}")
+        XCTAssertEqual(MouseTune.flatPropertiesJSON(speed: 100),
+                       "{\"HIDUseLinearScalingMouseAcceleration\":1,\"HIDMouseAcceleration\":262144}", "hız 4'te sınırlanır")
     }
 
     func testMatchingEscapesName() {

@@ -12,6 +12,12 @@ import Foundation
 ///
 /// Değerler `hidutil property --matching … --set …` ile yalnız seçilen farenin servisine yazılır;
 /// izin istemez, kalıcı değildir.
+///
+/// macOS 27'de Bluetooth LE fareler (DriverKit sürücüsü, `AppleUserHIDEventService`) yazılan
+/// çözünürlüğü yok sayıyor: ivme filtresi çözünürlüğü sürücünün kendi özelliğinden okuyor. Çarpan
+/// (`HIDPointerAccelerationMultiplier`) ve kullanıcı eğrileri (`HIDUserPointerAccelCurves`) de
+/// bu farelerde etkisiz kaldı (Logi M240 ile denendi). İşleyen tek yol düz ölçek: ivme eğrisi kapanır,
+/// hareket hız kadar büyütülür (`HIDUseLinearScalingMouseAcceleration`). Bu farelerde ivme ayarı yoktur.
 public enum MouseTune {
     public static let speedRange: ClosedRange<Double> = 0.5...4.0
     /// Sistem kaydırıcısı 3'te biter; üstü de kabul ediliyor, uzun mesafe için pay bırakıldı.
@@ -43,8 +49,14 @@ public enum MouseTune {
         propertiesJSON(resolution: fixed(defaultDPI), acceleration: fixed(scaling))
     }
 
+    /// Çözünürlüğü yok sayan fareler için düz ölçek: imleç hareketi `speed` kadar büyür, ivme yok.
+    public static func flatPropertiesJSON(speed: Double) -> String {
+        "{\"HIDUseLinearScalingMouseAcceleration\":1,\"HIDMouseAcceleration\":\(fixed(clampSpeed(speed)))}"
+    }
+
+    /// Düz ölçek kapalı yazılır: önceden düz ölçekte kaldıysa macOS'un eğrisi geri gelsin.
     static func propertiesJSON(resolution: Int, acceleration: Int) -> String {
-        "{\"HIDPointerResolution\":\(resolution),\"HIDMouseAcceleration\":\(acceleration)}"
+        "{\"HIDUseLinearScalingMouseAcceleration\":0,\"HIDPointerResolution\":\(resolution),\"HIDMouseAcceleration\":\(acceleration)}"
     }
 
     /// Fare ürün adıyla eşlenir: bazı fareler (HP Z3700) üretici ve ürün kimliğini ters bildiriyor.
