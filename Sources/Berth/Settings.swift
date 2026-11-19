@@ -1200,11 +1200,9 @@ private struct MouseProfileSection: View {
             slider(tx("Hız", "Speed"), value: $speed, range: MouseTune.speedRange, label: String(format: "%.2f×", speed)) {
                 update { $0.speed = speed }
             }
-            if settings.mouseStatuses[name] != .appliedFlat {
-                slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
-                       label: String(format: "%.2f", acceleration)) {
-                    update { $0.acceleration = acceleration }
-                }
+            slider(tx("İvme", "Acceleration"), value: $acceleration, range: MouseTune.accelerationRange,
+                   label: String(format: "%.2f", acceleration)) {
+                update { $0.acceleration = acceleration }
             }
             HStack {
                 Button(tx("Berth önerisi", "Berth's suggestion")) { set(.suggested) }

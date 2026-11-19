@@ -29,8 +29,8 @@ final class MouseTuner {
             case .notConnected: return tx("Bağlı değil", "Not connected")
             case .applied: return tx("Berth ayarı uygulanıyor", "Berth's setting is active")
             case .appliedFlat:
-                return tx("Berth ayarı uygulanıyor. Bu fare macOS'un ivme eğrisini değiştirmeye izin vermiyor; hız düz uygulanır, ivme ayarı yok.",
-                          "Berth's setting is active. This mouse doesn't let macOS's acceleration curve be changed; speed is applied flat, without acceleration.")
+                return tx("Berth ayarı uygulanıyor. Bu fare macOS'un ivme eğrisini değiştirmeye izin vermiyor; ivmeyi Berth hesaplıyor.",
+                          "Berth's setting is active. This mouse doesn't let macOS's acceleration curve be changed; Berth computes the acceleration.")
             case .failed: return tx("Uygulanamadı", "Couldn't apply")
             }
         }
@@ -42,6 +42,7 @@ final class MouseTuner {
     private(set) var statuses: [String: Status] = [:]
 
     private var config = Config()
+    private let dynamic = DynamicPointer()
     /// Değerlerimizi yazdığımız fareler ve yazılan değer: kapatılınca geri yüklenir, değer aynıysa
     /// yeniden yazılmaz (bağlanma ve uyanış dışında).
     private var tuned: [String: MouseProfile] = [:]
@@ -63,6 +64,7 @@ final class MouseTuner {
     /// Berth kapanırken: fareleri macOS'un kendi değerlerine bırakır.
     func shutdown() {
         removeObservers()
+        dynamic.set([:])
         for name in tuned.keys { Self.restoreSystemValues(mouseName: name) }
         tuned.removeAll()
     }
@@ -121,6 +123,7 @@ final class MouseTuner {
         connected = Self.connectedMice()
         let flat = Self.flatMice()
         var next: [String: Status] = [:]
+        var accelerated: [String: PointerAccelerator] = [:]
         for name in Set(connected).union(config.profiles.keys) {
             let profile = config.profiles[name]
             let wanted = config.enabled && profile?.enabled == true
@@ -132,6 +135,7 @@ final class MouseTuner {
             if wanted, let profile {
                 let isFlat = flat.contains(name)
                 let applied: Status = isFlat ? .appliedFlat : .applied
+                if isFlat { accelerated[name] = PointerAccelerator(speed: profile.speed, acceleration: profile.acceleration) }
                 if !force, tuned[name] == profile {
                     next[name] = applied
                     continue
@@ -146,6 +150,7 @@ final class MouseTuner {
                 next[name] = config.enabled ? .system : .off
             }
         }
+        dynamic.set(accelerated, force: force)
         statuses = next
         onChange?(connected, statuses)
     }
@@ -227,6 +232,130 @@ final class MouseTuner {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 MainActor.assumeIsolated { self?.apply(force: true) }
             }
+        }
+    }
+}
+
+/// Eğrisi değiştirilemeyen farelerde ivme (bkz. `PointerAccelerator`): imleç hareketleri dinlenir
+/// (yalnızca dinleyen olay musluğu), farenin düz çarpanı olay sistemi istemcisiyle anlık yazılır
+/// (her değişiklikte `hidutil` çalıştırmak çok yavaş).
+///
+/// Hangi aygıtın hareket ettiği olaydan bilinmiyor; trackpad aynı anda kullanılırsa hız tahmini
+/// karışabilir, çarpan yine yalnız bu farelere yazılır. Birden çok böyle fare varsa hız, ilkinin
+/// çarpanıyla tahmin edilir.
+@MainActor
+private final class DynamicPointer {
+    private var accelerators: [String: PointerAccelerator] = [:]
+    private var services: [String: [IOHIDServiceClient]] = [:]
+    private var client: IOHIDEventSystemClient?
+    private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
+    private var restTimer: Timer?
+    private var lastMove = CFAbsoluteTimeGetCurrent()
+
+    /// `force`: fare yeniden bağlanmış olabilir, servisler yeniden aranır.
+    func set(_ next: [String: PointerAccelerator], force: Bool = false) {
+        let active = next.filter { $0.value.acceleration > 0 }
+        if active.keys.sorted() != accelerators.keys.sorted() || force { services = [:] }
+        accelerators = active
+        guard !active.isEmpty else {
+            stop()
+            return
+        }
+        if services.isEmpty { findServices() }
+        start()
+    }
+
+    private func findServices() {
+        typealias Create = @convention(c) (CFAllocator?) -> Unmanaged<IOHIDEventSystemClient>?
+        if client == nil, let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IOHIDEventSystemClientCreateSimpleClient") {
+            client = unsafeBitCast(symbol, to: Create.self)(kCFAllocatorDefault)?.takeRetainedValue()
+        }
+        guard let client, let all = IOHIDEventSystemClientCopyServices(client) as? [IOHIDServiceClient] else { return }
+        for service in all where IOHIDServiceClientConformsTo(service, UInt32(kHIDPage_GenericDesktop), UInt32(kHIDUsage_GD_Mouse)) != 0 {
+            guard let name = IOHIDServiceClientCopyProperty(service, kIOHIDProductKey as CFString) as? String,
+                  accelerators[name] != nil else { continue }
+            services[name, default: []].append(service)
+        }
+    }
+
+    private func start() {
+        guard tap == nil else { return }
+        let mask = [CGEventType.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+            .reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+        let callback: CGEventTapCallBack = { _, type, event, context in
+            guard let context else { return Unmanaged.passUnretained(event) }
+            let pointer = Unmanaged<DynamicPointer>.fromOpaque(context).takeUnretainedValue()
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                MainActor.assumeIsolated { if let tap = pointer.tap { CGEvent.tapEnable(tap: tap, enable: true) } }
+                return Unmanaged.passUnretained(event)
+            }
+            let dx = Double(event.getIntegerValueField(.mouseEventDeltaX))
+            let dy = Double(event.getIntegerValueField(.mouseEventDeltaY))
+            MainActor.assumeIsolated { pointer.moved((dx * dx + dy * dy).squareRoot()) }
+            return Unmanaged.passUnretained(event)
+        }
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
+                                          eventsOfInterest: mask, callback: callback,
+                                          userInfo: Unmanaged.passUnretained(self).toOpaque())
+        else {
+            DockTrace.log("fare ivmesi: olay musluğu kurulamadı")
+            return
+        }
+        self.tap = tap
+        source = CFMachPortCreateRunLoopSource(nil, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        // Hareket durunca çarpan hıza döner.
+        restTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.restIfIdle() }
+        }
+    }
+
+    private func stop() {
+        restTimer?.invalidate()
+        restTimer = nil
+        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        tap = nil
+        source = nil
+        services = [:]
+    }
+
+    private func moved(_ distance: Double) {
+        let now = CFAbsoluteTimeGetCurrent()
+        let interval = now - lastMove
+        lastMove = now
+        // Hız ilk farenin çarpanıyla tahmin edilir; aynı ham hız her fareye kendi eğrisiyle uygulanır.
+        guard let lead = accelerators.keys.sorted().first, var first = accelerators[lead] else { return }
+        let before = first.factor
+        _ = first.move(distance: distance, interval: interval)
+        let raw = distance / before
+        for name in accelerators.keys {
+            if name == lead {
+                accelerators[name] = first
+                write(first.factor, to: name, previous: before)
+            } else if var other = accelerators[name] {
+                let previous = other.factor
+                _ = other.move(distance: raw * previous, interval: interval)
+                accelerators[name] = other
+                write(other.factor, to: name, previous: previous)
+            }
+        }
+    }
+
+    private func restIfIdle() {
+        guard CFAbsoluteTimeGetCurrent() - lastMove > 0.08 else { return }
+        for name in accelerators.keys {
+            if let factor = accelerators[name]?.rest() { write(factor, to: name, previous: nil) }
+        }
+    }
+
+    private func write(_ factor: Double, to name: String, previous: Double?) {
+        guard factor != previous else { return }
+        for service in services[name] ?? [] {
+            IOHIDServiceClientSetProperty(service, "HIDUseLinearScalingMouseAcceleration" as CFString, 1 as CFNumber)
+            IOHIDServiceClientSetProperty(service, kIOHIDMouseAccelerationTypeKey as CFString, MouseTune.fixed(factor) as CFNumber)
         }
     }
 }

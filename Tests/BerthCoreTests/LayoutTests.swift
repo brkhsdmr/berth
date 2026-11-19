@@ -775,6 +775,27 @@ final class MouseTuneTests: XCTestCase {
     }
 }
 
+final class PointerAcceleratorTests: XCTestCase {
+    func testStartsAtSpeedAndGrowsWithVelocity() {
+        let accelerator = PointerAccelerator(speed: 2, acceleration: 3)
+        XCTAssertEqual(accelerator.factor, 2)
+        XCTAssertEqual(accelerator.factor(forVelocity: 0), 2)
+        XCTAssertEqual(accelerator.factor(forVelocity: 1500), 5)
+        XCTAssertEqual(accelerator.factor(forVelocity: 100_000), 6.5, "tavan")
+        XCTAssertEqual(PointerAccelerator(speed: 2, acceleration: 0).factor(forVelocity: 3000), 2, "ivme 0 düz")
+    }
+
+    func testFastMovementRaisesFactorAndRestReturnsToSpeed() {
+        var accelerator = PointerAccelerator(speed: 2, acceleration: 3)
+        XCTAssertNil(accelerator.move(distance: 1, interval: 0.008), "yavaş harekette değişmez")
+        var last: Double?
+        for _ in 0..<20 { last = accelerator.move(distance: 60, interval: 0.008) ?? last }
+        XCTAssertGreaterThan(last ?? 0, 4)
+        XCTAssertEqual(accelerator.rest(), 2)
+        XCTAssertNil(accelerator.rest())
+    }
+}
+
 final class MouseProfileTests: XCTestCase {
     func testRoundTripsThroughDictionary() {
         let profile = MouseProfile(enabled: false, speed: 3.1, acceleration: 2.5)
