@@ -74,6 +74,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     private let mouseTuner = MouseTuner()
     private let edgeSwitch = EdgeSwitchMonitor()
     private let remoteKeyboard = RemoteKeyboardMapping()
+    private let scrollWheel = ScrollWheelTuner()
     private let layoutStore = WorkspaceLayoutStore()
     private var isClosing = false
     /// Tam ekrana alma ve sıralama sürerken imleç bizde: yeni açılış işi bozar.
@@ -90,6 +91,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         DockAutoHide.release()
         mouseTuner.shutdown()
         remoteKeyboard.shutdown()
+        scrollWheel.shutdown()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -199,6 +201,11 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         edgeSwitch.configure(enabled: settings.edgeSwitchEnabled, band: settings.edgeSwitchBand, hold: settings.edgeSwitchHold)
         settings.onRemoteKeyboardLiftChange = { [weak self] enabled in self?.remoteKeyboard.configure(enabled: enabled) }
         remoteKeyboard.configure(enabled: settings.remoteKeyboardLift)
+        settings.onScrollWheelChange = { [weak self] in
+            guard let self else { return }
+            self.scrollWheel.configure(enabled: self.settings.scrollWheelEnabled, lines: self.settings.scrollLines)
+        }
+        scrollWheel.configure(enabled: settings.scrollWheelEnabled, lines: settings.scrollLines)
         settings.onShortcutChange = { [weak self] shortcut in
             guard let self else { return false }
             // Kısayol kapalıyken yalnızca kaydedilir; açılınca alınır.

@@ -28,6 +28,7 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **Trackpad hareketleri tek tabloda (macOS).** Üç ve dört parmakla yukarı ve aşağı kaydırmanın ne yapacağını seçersin: Berth sahnesi, Mission Control, App Exposé ya da hiçbir şey. macOS'un kendi ayarı da buna göre güncellenir, Sistem Ayarları'nın gösteremediği birleşimler dahil.
 - **Windows'a yakın niteleme tuşları (macOS).** Dahili klavye için tek düğme (Kontrol → Dünya, Komut → Kontrol, Dünya → Komut), her Windows klavyesi için bir düğme (Ctrl → ⌘, Windows → ⌥, Alt → ⌃); macOS'un kendi Niteleme Tuşları ayarına yazılır. İstersen Windows App öndeyken kalkar, uzak bilgisayarda Ctrl yine Ctrl olur.
 - **Kenar geçişi (macOS, isteğe bağlı).** İmleci ekranın sol ya da sağ kenarına dayayınca bir masaüstü o yana geçilir; istersen yalnızca seçtiğin niteleme tuşu basılıyken.
+- **Windows gibi fare tekerleği (macOS, isteğe bağlı).** macOS'un ivmeli tekerleği yerine her çentik sabit sayıda satır kaydırır (varsayılan 3); trackpad değişmez.
 - **Gizlilik.** Hesap yok, analiz yok. Mac–Windows köprüsünü açmadıkça ağ bağlantısı da yok. Bkz. [gizlilik](store/privacy.md).
 
 <table><tr>

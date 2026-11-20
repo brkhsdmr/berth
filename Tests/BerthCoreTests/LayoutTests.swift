@@ -796,6 +796,46 @@ final class PointerAcceleratorTests: XCTestCase {
     }
 }
 
+final class ScrollWheelTests: XCTestCase {
+    func testEveryNotchBecomesFixedLinesKeepingDirection() {
+        XCTAssertEqual(ScrollWheel.flattened(lines: 1, fixed: 0.3, to: 3), .init(lines: 3, fixed: 3, points: 30))
+        XCTAssertEqual(ScrollWheel.flattened(lines: -7, fixed: -7.2, to: 3), .init(lines: -3, fixed: -3, points: -30))
+        XCTAssertEqual(ScrollWheel.flattened(lines: 0, fixed: -0.1, to: 2), .init(lines: -2, fixed: -2, points: -20),
+                       "satır 0 ama yön var")
+        XCTAssertNil(ScrollWheel.flattened(lines: 0, fixed: 0, to: 3))
+        XCTAssertEqual(ScrollWheel.flattened(lines: 1, fixed: 1, to: 50)?.lines, 10, "sınır")
+    }
+}
+
+final class SmoothScrollTests: XCTestCase {
+    func testNotchIsSentInFullOverDecreasingSteps() {
+        var scroll = SmoothScroll()
+        scroll.add(vertical: 1, horizontal: 0, lines: 3)
+        var steps: [Int32] = []
+        while !scroll.isIdle { steps.append(scroll.step().y) }
+        XCTAssertEqual(steps.reduce(0, +), 120)
+        XCTAssertGreaterThan(steps.first ?? 0, steps.last ?? 0)
+        XCTAssertLessThan(steps.count, 25)
+    }
+
+    func testFastSpinsGoFurther() {
+        XCTAssertEqual(SmoothScroll.boost(interval: 0.5), 1, "tek tek")
+        XCTAssertEqual(SmoothScroll.boost(interval: 0.05), 2, accuracy: 0.001)
+        XCTAssertEqual(SmoothScroll.boost(interval: 0.005), SmoothScroll.maxBoost, "tavan")
+        var scroll = SmoothScroll()
+        scroll.add(vertical: -1, horizontal: 0, lines: 3, boost: 2)
+        XCTAssertEqual(scroll.remainingY, -240)
+    }
+
+    func testReversingDropsTheRest() {
+        var scroll = SmoothScroll()
+        scroll.add(vertical: 1, horizontal: 0, lines: 3)
+        _ = scroll.step()
+        scroll.add(vertical: -1, horizontal: 0, lines: 3)
+        XCTAssertEqual(scroll.remainingY, -120)
+    }
+}
+
 final class MouseProfileTests: XCTestCase {
     func testRoundTripsThroughDictionary() {
         let profile = MouseProfile(enabled: false, speed: 3.1, acceleration: 2.5)

@@ -43,6 +43,8 @@ final class AppSettings: ObservableObject {
         static let remoteKeyboardLift = "remoteKeyboardLift"
         static let edgeSwitchBand = "edgeSwitchBand"
         static let edgeSwitchHold = "edgeSwitchHoldKeys"
+        static let scrollWheel = "scrollWheelLinesEnabled"
+        static let scrollLines = "scrollWheelLines"
         // Tek fareli ilk sürüm; açılışta `mouseProfiles`'a taşınır.
         static let mouseName = "mouseTuneName"
         static let mouseSpeed = "mouseTuneSpeed"
@@ -225,6 +227,14 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(edgeSwitchBand, forKey: Key.edgeSwitchBand); onEdgeSwitchChange?() }
     }
 
+    /// Fare tekerleği Windows gibi: her çentik sabit satır (`ScrollWheelTuner`).
+    @Published var scrollWheelEnabled: Bool {
+        didSet { UserDefaults.standard.set(scrollWheelEnabled, forKey: Key.scrollWheel); onScrollWheelChange?() }
+    }
+    @Published var scrollLines: Int {
+        didSet { UserDefaults.standard.set(scrollLines, forKey: Key.scrollLines); onScrollWheelChange?() }
+    }
+
     var mouseTuneConfig: MouseTuner.Config {
         MouseTuner.Config(enabled: mouseTuneEnabled, profiles: mouseProfiles)
     }
@@ -244,6 +254,7 @@ final class AppSettings: ObservableObject {
     var onFullScreenDockChange: ((Bool) -> Void)?
     var onMouseTuneChange: (() -> Void)?
     var onEdgeSwitchChange: (() -> Void)?
+    var onScrollWheelChange: (() -> Void)?
     var onRemoteKeyboardLiftChange: ((Bool) -> Void)?
     /// Kısayol alınabildiyse `true` döner.
     var onShortcutChange: ((Shortcut) -> Bool)?
@@ -290,6 +301,8 @@ final class AppSettings: ObservableObject {
         remoteKeyboardLift = defaults.object(forKey: Key.remoteKeyboardLift) as? Bool ?? false
         edgeSwitchBand = defaults.object(forKey: Key.edgeSwitchBand) as? Double ?? EdgeSwitch.defaultBand
         edgeSwitchHold = EdgeSwitch.HoldKeys(rawValue: defaults.integer(forKey: Key.edgeSwitchHold))
+        scrollWheelEnabled = defaults.object(forKey: Key.scrollWheel) as? Bool ?? false
+        scrollLines = defaults.object(forKey: Key.scrollLines) as? Int ?? ScrollWheel.defaultLines
         // İlk açılışta izin istenmez: izni zaten verilmişse açık, yoksa kapalı başlar.
         windowPreviewsEnabled = defaults.object(forKey: Key.windowPreviews) as? Bool ?? Permissions.screenRecording
         if let data = defaults.data(forKey: Key.shortcut),
@@ -1144,6 +1157,16 @@ private struct MouseTab: View {
             }
             ForEach(mice, id: \.self) { name in
                 MouseProfileSection(settings: settings, name: name)
+            }
+            Section(tx("Fare tekerleği", "Mouse wheel")) {
+                Toggle(tx("Tekerleği Windows gibi kaydır", "Scroll the wheel like Windows"), isOn: $settings.scrollWheelEnabled)
+                Stepper(value: $settings.scrollLines, in: ScrollWheel.lineRange) {
+                    Text(tx("Çentik başına \(settings.scrollLines) satır", "\(settings.scrollLines) lines per notch"))
+                }
+                .disabled(!settings.scrollWheelEnabled)
+                Text(tx("macOS tekerleğe ivme uygular: yavaş çevrilen çentik çok az kaydırır, hızlı çevirdikçe artar. Açıkken her çentik Windows'taki gibi sabit sayıda satır kaydırır (Windows'un varsayılanı 3), yumuşak akar; tekerleği hızlı çevirdikçe çentik başına mesafe 4 katına kadar büyür. Tüm harici farelerde geçerli; trackpad ve Magic Mouse değişmez. Windows App öndeyken tekerleğe dokunulmaz. Erişilebilirlik izni gerekir.",
+                        "macOS accelerates the wheel: a slowly turned notch scrolls very little, more the faster you turn. When on, every notch scrolls a fixed number of lines as on Windows (Windows' default is 3) and glides smoothly; spinning the wheel faster makes each notch go up to 4 times further. Applies to all external mice; the trackpad and Magic Mouse are unchanged. The wheel is left alone while Windows App is in front. Needs Accessibility access."))
+                    .font(.callout).foregroundStyle(.secondary)
             }
             Section(tx("Kenar geçişi", "Edge switching")) {
                 Toggle(tx("İmleç sol ya da sağ kenara değince masaüstünü değiştir", "Switch desktops when the pointer hits the left or right edge"),
