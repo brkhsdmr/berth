@@ -66,6 +66,17 @@ public enum ModifierPreset {
         return "{\"HIDKeyboardModifierMappingPairs\":[\(items.joined(separator: ","))]}"
     }
 
+    /// Harici klavyeler için: eşleme `UserKeyMapping` olarak yazılır, macOS'un çifti boşaltılır.
+    /// Bluetooth LE klavyeler (DriverKit sürücüsü) `HIDKeyboardModifierMappingPairs`'i yok sayıyor,
+    /// `UserKeyMapping`'i uyguluyor (Designer Compact Keyboard ile denendi, macOS 27.2). İkisi
+    /// birden doluysa üst üste binebilir; biri hep boş.
+    public static func externalPropertyJSON(_ pairs: Set<ModifierPair>) -> String {
+        let items = pairs.sorted { $0.source < $1.source }.map {
+            "{\"HIDKeyboardModifierMappingSrc\":\($0.source),\"HIDKeyboardModifierMappingDst\":\($0.destination)}"
+        }
+        return "{\"HIDKeyboardModifierMappingPairs\":[],\"UserKeyMapping\":[\(items.joined(separator: ","))]}"
+    }
+
     public static func matchingJSON(vendor: Int, product: Int) -> String {
         "{\"VendorID\":\(vendor),\"ProductID\":\(product),\"PrimaryUsagePage\":1,\"PrimaryUsage\":6}"
     }

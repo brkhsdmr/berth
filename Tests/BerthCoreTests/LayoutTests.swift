@@ -853,6 +853,9 @@ final class ModifierMappingTests: XCTestCase {
     func testKeysAndJSON() {
         XCTAssertEqual(ModifierPreset.preferenceKey(vendor: 1118, product: 2098), "com.apple.keyboard.modifiermapping.1118-2098-0")
         XCTAssertEqual(ModifierPreset.propertyJSON([]), "{\"HIDKeyboardModifierMappingPairs\":[]}")
+        XCTAssertEqual(ModifierPreset.externalPropertyJSON([ModifierPair(ModifierKey.leftControl, ModifierKey.leftCommand)]),
+                       "{\"HIDKeyboardModifierMappingPairs\":[],\"UserKeyMapping\":[{\"HIDKeyboardModifierMappingSrc\":\(ModifierKey.leftControl),\"HIDKeyboardModifierMappingDst\":\(ModifierKey.leftCommand)}]}")
+        XCTAssertEqual(ModifierPreset.externalPropertyJSON([]), "{\"HIDKeyboardModifierMappingPairs\":[],\"UserKeyMapping\":[]}")
         XCTAssertEqual(ModifierPreset.propertyJSON([ModifierPair(ModifierKey.leftControl, ModifierKey.leftCommand)]),
                        "{\"HIDKeyboardModifierMappingPairs\":[{\"HIDKeyboardModifierMappingSrc\":30064771296,\"HIDKeyboardModifierMappingDst\":30064771299}]}")
         XCTAssertTrue(ModifierPreset.effective([ModifierPair(1, 1)]).isEmpty)

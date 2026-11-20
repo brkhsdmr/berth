@@ -80,7 +80,8 @@ enum KeyboardModifiers {
         let matching = keyboard.builtIn
             ? "{\"Built-In\":true,\"PrimaryUsagePage\":1,\"PrimaryUsage\":6}"
             : ModifierPreset.matchingJSON(vendor: keyboard.vendor, product: keyboard.product)
-        process.arguments = ["property", "--matching", matching, "--set", ModifierPreset.propertyJSON(pairs)]
+        let properties = keyboard.builtIn ? ModifierPreset.propertyJSON(pairs) : ModifierPreset.externalPropertyJSON(pairs)
+        process.arguments = ["property", "--matching", matching, "--set", properties]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do {
@@ -93,31 +94,29 @@ enum KeyboardModifiers {
     }
 }
 
-/// Windows App öndeyken harici klavyelerin macOS niteleme tuşu eşlemesini kaldırır: Windows klavyesi
-/// karşıya kendi diziliminde gider (Ctrl yine Ctrl). Windows App arkaya geçince eşleme geri gelir.
-/// Dahili klavyeye dokunulmaz. Niteleme tuşu basılıyken eşleme değiştirilmez (tuş takılı kalmasın);
-/// bırakılınca yapılır.
+/// Harici klavyelerin eşlemesini tutar: Berth açılınca, klavye (yeniden) bağlanınca ve uyanışta
+/// uygular (yeni servis eşlemesiz gelir). İsteğe bağlı olarak Windows App öndeyken eşlemeyi kaldırır:
+/// Windows klavyesi karşıya kendi diziliminde gider (Ctrl yine Ctrl), Windows App arkaya geçince
+/// eşleme geri gelir. Dahili klavyeye dokunulmaz. Niteleme tuşu basılıyken eşleme değiştirilmez
+/// (tuş takılı kalmasın); bırakılınca yapılır.
 @MainActor
 final class RemoteKeyboardMapping {
     private static let windowsAppID = "com.microsoft.rdc.macos"
 
     private var enabled = false
     private var lifted: [KeyboardModifiers.Keyboard] = []
-    private var observer: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
     private var retry: Timer?
+    private var notificationPort: IONotificationPortRef?
+    private var matchIterator: io_iterator_t = 0
+
+    init() {
+        installObservers()
+        reapply()
+    }
 
     func configure(enabled: Bool) {
         self.enabled = enabled
-        if enabled, observer == nil {
-            observer = NSWorkspace.shared.notificationCenter.addObserver(
-                forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.update() }
-            }
-        } else if !enabled, let observer {
-            NSWorkspace.shared.notificationCenter.removeObserver(observer)
-            self.observer = nil
-        }
         update()
     }
 
@@ -126,6 +125,7 @@ final class RemoteKeyboardMapping {
         enabled = false
         retry?.invalidate()
         restore()
+        removeObservers()
     }
 
     private func update() {
@@ -151,5 +151,58 @@ final class RemoteKeyboardMapping {
         for keyboard in lifted { KeyboardModifiers.apply(KeyboardModifiers.mapping(for: keyboard), to: keyboard) }
         if !lifted.isEmpty { DockTrace.log("klavye eslemesi geri geldi: \(lifted.map(\.name))") }
         lifted = []
+    }
+
+    /// Bağlı harici klavyelerin hepsine kayıtlı eşlemesi (ya da Windows App öndeyse boş eşleme).
+    private func reapply() {
+        lifted = []
+        for keyboard in KeyboardModifiers.connected() where !keyboard.builtIn {
+            let pairs = KeyboardModifiers.mapping(for: keyboard)
+            if !pairs.isEmpty { KeyboardModifiers.apply(pairs, to: keyboard) }
+        }
+        update()
+    }
+
+    /// Olay servisi cihazdan biraz sonra hazır oluyor; iki kez denenir.
+    private func reapplySoon() {
+        for delay in [1.0, 3.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                MainActor.assumeIsolated { self?.reapply() }
+            }
+        }
+    }
+
+    private func installObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        observers.append(center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.update() }
+        })
+        observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reapplySoon() }
+        })
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
+        notificationPort = port
+        CFRunLoopAddSource(CFRunLoopGetMain(), IONotificationPortGetRunLoopSource(port).takeUnretainedValue(), .commonModes)
+        let matching = IOServiceMatching("IOHIDDevice") as NSMutableDictionary
+        matching[kIOHIDPrimaryUsagePageKey] = kHIDPage_GenericDesktop
+        matching[kIOHIDPrimaryUsageKey] = kHIDUsage_GD_Keyboard
+        let callback: IOServiceMatchingCallback = { context, iterator in
+            var any = false
+            while case let service = IOIteratorNext(iterator), service != 0 { IOObjectRelease(service); any = true }
+            guard any, let context else { return }
+            let mapping = Unmanaged<RemoteKeyboardMapping>.fromOpaque(context).takeUnretainedValue()
+            MainActor.assumeIsolated { mapping.reapplySoon() }
+        }
+        IOServiceAddMatchingNotification(port, kIOFirstMatchNotification, matching, callback,
+                                         Unmanaged.passUnretained(self).toOpaque(), &matchIterator)
+        while case let service = IOIteratorNext(matchIterator), service != 0 { IOObjectRelease(service) }
+    }
+
+    private func removeObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        observers.forEach(center.removeObserver)
+        observers.removeAll()
+        if matchIterator != 0 { IOObjectRelease(matchIterator); matchIterator = 0 }
+        if let port = notificationPort { IONotificationPortDestroy(port); notificationPort = nil }
     }
 }
