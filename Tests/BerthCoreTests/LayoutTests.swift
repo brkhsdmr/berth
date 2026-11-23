@@ -890,12 +890,29 @@ final class ModifierMappingTests: XCTestCase {
         XCTAssertEqual(ModifierPreset.effective(written), ModifierPreset.macWindowsLike)
     }
 
+    /// macOS eşlemeyi bağlanırken uyguladıysa Berth üstüne yazmaz; Windows App için tersini yazar.
+    func testUserKeyMappingCompensatesSystemMapping() {
+        let windows = ModifierPreset.windowsKeyboard
+        XCTAssertEqual(ModifierPreset.userKeyMapping(desired: windows, active: []), windows)
+        XCTAssertTrue(ModifierPreset.userKeyMapping(desired: windows, active: windows).isEmpty)
+        let inverse = ModifierPreset.userKeyMapping(desired: [], active: windows)
+        XCTAssertEqual(inverse, Set(windows.map { ModifierPair($0.destination, $0.source) }))
+        // Her tuş: önce macOS'un çifti, sonra Berth'ün yazdığı → istenen.
+        let active = Dictionary(uniqueKeysWithValues: windows.map { ($0.source, $0.destination) })
+        let added = Dictionary(uniqueKeysWithValues: inverse.map { ($0.source, $0.destination) })
+        for key in active.keys {
+            let middle = active[key] ?? key
+            XCTAssertEqual(added[middle] ?? middle, key)
+        }
+        XCTAssertTrue(ModifierPreset.userKeyMapping(desired: [], active: []).isEmpty)
+    }
+
     func testKeysAndJSON() {
         XCTAssertEqual(ModifierPreset.preferenceKey(vendor: 1118, product: 2098), "com.apple.keyboard.modifiermapping.1118-2098-0")
         XCTAssertEqual(ModifierPreset.propertyJSON([]), "{\"HIDKeyboardModifierMappingPairs\":[]}")
         XCTAssertEqual(ModifierPreset.externalPropertyJSON([ModifierPair(ModifierKey.leftControl, ModifierKey.leftCommand)]),
-                       "{\"HIDKeyboardModifierMappingPairs\":[],\"UserKeyMapping\":[{\"HIDKeyboardModifierMappingSrc\":\(ModifierKey.leftControl),\"HIDKeyboardModifierMappingDst\":\(ModifierKey.leftCommand)}]}")
-        XCTAssertEqual(ModifierPreset.externalPropertyJSON([]), "{\"HIDKeyboardModifierMappingPairs\":[],\"UserKeyMapping\":[]}")
+                       "{\"UserKeyMapping\":[{\"HIDKeyboardModifierMappingSrc\":\(ModifierKey.leftControl),\"HIDKeyboardModifierMappingDst\":\(ModifierKey.leftCommand)}]}")
+        XCTAssertEqual(ModifierPreset.externalPropertyJSON([]), "{\"UserKeyMapping\":[]}")
         XCTAssertEqual(ModifierPreset.propertyJSON([ModifierPair(ModifierKey.leftControl, ModifierKey.leftCommand)]),
                        "{\"HIDKeyboardModifierMappingPairs\":[{\"HIDKeyboardModifierMappingSrc\":30064771296,\"HIDKeyboardModifierMappingDst\":30064771299}]}")
         XCTAssertTrue(ModifierPreset.effective([ModifierPair(1, 1)]).isEmpty)

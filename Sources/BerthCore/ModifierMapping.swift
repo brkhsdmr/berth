@@ -66,15 +66,32 @@ public enum ModifierPreset {
         return "{\"HIDKeyboardModifierMappingPairs\":[\(items.joined(separator: ","))]}"
     }
 
-    /// Harici klavyeler için: eşleme `UserKeyMapping` olarak yazılır, macOS'un çifti boşaltılır.
-    /// Bluetooth LE klavyeler (DriverKit sürücüsü) `HIDKeyboardModifierMappingPairs`'i yok sayıyor,
-    /// `UserKeyMapping`'i uyguluyor (Designer Compact Keyboard ile denendi, macOS 27.2). İkisi
-    /// birden doluysa üst üste binebilir; biri hep boş.
+    /// Harici klavyeler için `hidutil property --set` değeri: yalnızca `UserKeyMapping`.
+    /// Bluetooth LE klavyeler (DriverKit sürücüsü) `HIDKeyboardModifierMappingPairs` yazımını yok
+    /// sayıyor; macOS kendi ayarını onlara yalnızca bağlanma anında uyguluyor. Bu yüzden çifte
+    /// dokunulmaz, eksik kalan fark `userKeyMapping(desired:active:)` ile hesaplanır.
     public static func externalPropertyJSON(_ pairs: Set<ModifierPair>) -> String {
         let items = pairs.sorted { $0.source < $1.source }.map {
             "{\"HIDKeyboardModifierMappingSrc\":\($0.source),\"HIDKeyboardModifierMappingDst\":\($0.destination)}"
         }
-        return "{\"HIDKeyboardModifierMappingPairs\":[],\"UserKeyMapping\":[\(items.joined(separator: ","))]}"
+        return "{\"UserKeyMapping\":[\(items.joined(separator: ","))]}"
+    }
+
+    /// macOS'un klavyede zaten uyguladığı eşlemenin (`active`) üstüne yazılacak `UserKeyMapping`;
+    /// ikisi birlikte `desired` sonucunu verir. macOS bağlanırken kendi ayarını uyguladıysa ve ayar
+    /// değişmediyse boş; Windows App öndeyken (`desired` boş) macOS'un eşlemesinin tersi. İkisi üst
+    /// üste binerse (Ctrl → ⌘ → ⌥) tuşlar karışıyordu (Designer Compact Keyboard, macOS 27.2).
+    public static func userKeyMapping(desired: Set<ModifierPair>, active: Set<ModifierPair>) -> Set<ModifierPair> {
+        let want = Dictionary(desired.map { ($0.source, $0.destination) }, uniquingKeysWith: { first, _ in first })
+        let have = Dictionary(active.map { ($0.source, $0.destination) }, uniquingKeysWith: { first, _ in first })
+        var result: [Int64: Int64] = [:]
+        for key in Set(want.keys).union(have.keys).sorted() {
+            let middle = have[key] ?? key
+            let target = want[key] ?? key
+            guard middle != target, result[middle] == nil else { continue }
+            result[middle] = target
+        }
+        return Set(result.map { ModifierPair($0.key, $0.value) })
     }
 
     public static func matchingJSON(vendor: Int, product: Int) -> String {

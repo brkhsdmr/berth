@@ -72,6 +72,33 @@ enum KeyboardModifiers {
         apply(pairs, to: keyboard)
     }
 
+    /// macOS'un harici klavyede şu an uyguladığı çiftler: bağlanırken kendi ayarından yazdığı ve
+    /// olay servisinin `HIDEventServiceProperties` sözlüğünde duran değer.
+    static func activeSystemMapping(for keyboard: Keyboard) -> Set<ModifierPair> {
+        let matching = IOServiceMatching("IOHIDEventService") as NSMutableDictionary
+        matching[kIOHIDVendorIDKey] = keyboard.vendor
+        matching[kIOHIDProductIDKey] = keyboard.product
+        matching[kIOHIDPrimaryUsagePageKey] = kHIDPage_GenericDesktop
+        matching[kIOHIDPrimaryUsageKey] = kHIDUsage_GD_Keyboard
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else { return [] }
+        defer { IOObjectRelease(iterator) }
+        var result: Set<ModifierPair> = []
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            defer { IOObjectRelease(service) }
+            guard let properties = IORegistryEntryCreateCFProperty(service, "HIDEventServiceProperties" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any],
+                  let items = properties["HIDKeyboardModifierMappingPairs"] as? [[String: Any]] else { continue }
+            for item in items {
+                guard let source = (item["HIDKeyboardModifierMappingSrc"] as? NSNumber)?.int64Value,
+                      let destination = (item["HIDKeyboardModifierMappingDst"] as? NSNumber)?.int64Value,
+                      source != destination else { continue }
+                result.insert(ModifierPair(source, destination))
+            }
+        }
+        return result
+    }
+
     /// Yalnızca klavye servisine uygular, macOS'un ayarına dokunmaz (Windows App öndeyken geçici).
     @discardableResult
     static func apply(_ pairs: Set<ModifierPair>, to keyboard: Keyboard) -> Bool {
@@ -80,7 +107,9 @@ enum KeyboardModifiers {
         let matching = keyboard.builtIn
             ? "{\"Built-In\":true,\"PrimaryUsagePage\":1,\"PrimaryUsage\":6}"
             : ModifierPreset.matchingJSON(vendor: keyboard.vendor, product: keyboard.product)
-        let properties = keyboard.builtIn ? ModifierPreset.propertyJSON(pairs) : ModifierPreset.externalPropertyJSON(pairs)
+        let properties = keyboard.builtIn
+            ? ModifierPreset.propertyJSON(pairs)
+            : ModifierPreset.externalPropertyJSON(ModifierPreset.userKeyMapping(desired: pairs, active: activeSystemMapping(for: keyboard)))
         process.arguments = ["property", "--matching", matching, "--set", properties]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
