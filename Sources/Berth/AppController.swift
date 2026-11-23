@@ -392,6 +392,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
                 self.refreshRemoteDownCapture()
                 self.dockPreview.hide()
                 self.fullScreenDock.hide()
+                if self.isOpen, self.reclaimKeyboardIfBounced(activated) { return }
                 if self.isOpen, Date() >= self.ignoreActivationUntil { self.close() }
             }
         })
@@ -733,6 +734,8 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         "com.parallels.desktop.console", "com.citrix.receiver.icaviewer.mac", "com.teamviewer.TeamViewer",
     ]
     private var keyboardOwner: NSRunningApplication?
+    private var keyboardTakenAt: Date?
+    private var keyboardReclaims = 0
     private var memoryRelease: DispatchWorkItem?
     let remoteBridge = RemoteBridge()
 
@@ -741,7 +744,24 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
               let id = front.bundleIdentifier, Self.keyboardGrabbers.contains(id)
         else { return }
         keyboardOwner = front
+        keyboardTakenAt = Date()
+        keyboardReclaims = 0
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Windows App tam ekrandayken imleç sol üst köşedeyse (sıcak köşe) uygulama, Berth öne
+    /// geçer geçmez kendini yeniden öne alıyor ve sahne kapanıyordu (harici fareyle, 27.2). Klavye
+    /// alındıktan sonraki kısa sürede o uygulamanın kendiliğinden öne gelmesi geri alınır.
+    private func reclaimKeyboardIfBounced(_ activated: NSRunningApplication?) -> Bool {
+        guard let owner = keyboardOwner, let activated, activated.processIdentifier == owner.processIdentifier,
+              let takenAt = keyboardTakenAt, Date().timeIntervalSince(takenAt) < 1.0, keyboardReclaims < 3
+        else { return false }
+        keyboardReclaims += 1
+        DockTrace.log("klavye geri alindi: \(activated.localizedName ?? "?")")
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKey()
+        panel.makeFirstResponder(scene)
+        return true
     }
 
     private func giveKeyboardBack() {

@@ -80,7 +80,7 @@ Ayarlar > Açılış sekmesinde seçilir; hiçbiri sistem ayarını değiştirme
 
 - Arama kutusuna tıklanır ya da doğrudan yazılır; ⌘V yapıştırır, ⌘⌫ siler, Esc önce aramayı temizler.
 - Oklar seçimi en yakın önizlemeye taşır, ↩ seçilene geçer. ⌘1…⌘9 şeritteki o alana geçer.
-- Windows App gibi uzak masaüstü uygulamaları öndeyken klavyeyi kendileri yakalar; sahne açıkken uygulama öne alınır, kapanınca eski uygulama geri gelir.
+- Windows App gibi uzak masaüstü uygulamaları öndeyken klavyeyi kendileri yakalar; sahne açıkken uygulama öne alınır, kapanınca eski uygulama geri gelir. Windows App tam ekrandayken sol üst sıcak köşeden açılınca (imleç köşede, harici fareyle) Windows App Berth öne geçer geçmez kendini yeniden öne alıyordu ve sahne kapanıyordu; klavye alındıktan sonraki 1 sn içinde aynı uygulama kendiliğinden öne gelirse Berth odağı geri alır (en çok 3 kez).
 
 ## Birden çok ekran
 
