@@ -329,16 +329,19 @@ final class DockStripView: NSView {
     }
 }
 
-/// Windows App tam ekrandayken macOS'un Dock'u açılmasın diye imleci Dock kenarından bir nokta
-/// içeride tutar. macOS tam ekranda Dock'u imleç son piksel sırasına değince açıyor ve bunu başka
-/// bir uygulama için kapatmanın yolu yok (yalnızca uygulamanın kendi sunum seçenekleri). Bedeli:
-/// Windows'ta aynı kenardaki otomatik gizlenen görev çubuğu açılmayabilir.
+/// Windows App tam ekrandayken macOS'un Dock'u ya da menü çubuğu (pencere başlığıyla) açılmasın diye
+/// imleci o kenardan birkaç nokta içeride tutar. macOS tam ekranda ikisini imleç kenara değince
+/// açıyor ve bunu başka bir uygulama için kapatmanın yolu yok (yalnızca uygulamanın kendi sunum
+/// seçenekleri). Bedeli: Windows'ta aynı kenardaki görev çubuğu ya da kenara dayalı düğmeler
+/// zorlaşır. Üst kenarda köşeler serbest: sıcak köşe çalışsın.
 @MainActor
-final class DockEdgeGuard {
+final class FullScreenEdgeGuard {
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var observers: [NSObjectProtocol] = []
     private var windowsAppInFront = false
+    private var guardsDock = false
+    private var guardsTop = false
     private var edge = DockEdge.bottom
     private var fullScreenCache: (display: CGDirectDisplayID, at: Date, value: Bool)?
 
@@ -347,8 +350,10 @@ final class DockEdgeGuard {
     /// Dock yine açıldı (27.2).
     static let margin: CGFloat = 6
 
-    func configure(enabled: Bool) {
-        if enabled { start() } else { stop() }
+    func configure(dock: Bool, menuBar: Bool) {
+        guardsDock = dock
+        guardsTop = menuBar
+        if dock || menuBar { start() } else { stop() }
     }
 
     private func start() {
@@ -357,7 +362,7 @@ final class DockEdgeGuard {
             .reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
         let callback: CGEventTapCallBack = { _, type, event, context in
             guard let context else { return Unmanaged.passUnretained(event) }
-            let guardian = Unmanaged<DockEdgeGuard>.fromOpaque(context).takeUnretainedValue()
+            let guardian = Unmanaged<FullScreenEdgeGuard>.fromOpaque(context).takeUnretainedValue()
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 MainActor.assumeIsolated { if let tap = guardian.tap { CGEvent.tapEnable(tap: tap, enable: true) } }
                 return Unmanaged.passUnretained(event)
@@ -405,7 +410,12 @@ final class DockEdgeGuard {
         guard CGGetDisplaysWithPoint(point, 1, &display, &count) == .success, count > 0 else { return }
         let bounds = CGDisplayBounds(display)
         let all = NSScreen.screens.map { CGDisplayBounds($0.displayID) }
-        guard let target = edge.guarded(point, display: bounds, displays: all, margin: Self.margin), isFullScreen(display) else { return }
+        if guardsTop, let target = MenuBarEdge.guarded(point, display: bounds, displays: all, margin: Self.margin), isFullScreen(display) {
+            event.location = target
+            if event.getIntegerValueField(.mouseEventDeltaY) < 0 { event.setIntegerValueField(.mouseEventDeltaY, value: 0) }
+            return
+        }
+        guard guardsDock, let target = edge.guarded(point, display: bounds, displays: all, margin: Self.margin), isFullScreen(display) else { return }
         event.location = target
         // Kenara doğru itiş de Dock'u açabiliyor: o yöndeki hareket sıfırlanır.
         switch edge {

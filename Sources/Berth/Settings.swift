@@ -23,6 +23,7 @@ final class AppSettings: ObservableObject {
         static let shortcut = "shortcut"
         static let fullScreenDock = "fullScreenDockEnabled"
         static let fullScreenDockInWindowsApp = "fullScreenDockInWindowsApp"
+        static let fullScreenMenuBarInWindowsApp = "fullScreenMenuBarInWindowsApp"
         static let keepDockOpen = "keepDockOpenDuringPreview"
         static let windowPreviews = "windowPreviewsEnabled"
         static let otherAppsScroll = "otherAppsScrollEnabled"
@@ -191,14 +192,22 @@ final class AppSettings: ObservableObject {
     }
 
     /// Windows App tam ekrandayken Dock (Berth'ün şeridi ve macOS'unki) açılsın mı. Kapalıyken
-    /// (saptanmış) imleç Dock kenarından uzak tutulur (`DockEdgeGuard`).
+    /// (saptanmış) imleç Dock kenarından uzak tutulur (`FullScreenEdgeGuard`).
     @Published var fullScreenDockInWindowsApp: Bool {
         didSet {
             UserDefaults.standard.set(fullScreenDockInWindowsApp, forKey: Key.fullScreenDockInWindowsApp)
-            onFullScreenDockInWindowsAppChange?(fullScreenDockInWindowsApp)
+            onWindowsAppEdgesChange?()
         }
     }
-    var onFullScreenDockInWindowsAppChange: ((Bool) -> Void)?
+
+    /// Windows App tam ekrandayken imleç üst kenara değince menü çubuğu ve pencere başlığı insin mi.
+    @Published var fullScreenMenuBarInWindowsApp: Bool {
+        didSet {
+            UserDefaults.standard.set(fullScreenMenuBarInWindowsApp, forKey: Key.fullScreenMenuBarInWindowsApp)
+            onWindowsAppEdgesChange?()
+        }
+    }
+    var onWindowsAppEdgesChange: (() -> Void)?
 
     /// Dock otomatik gizliyken önizleme açık kaldıkça Dock gizlenmez.
     @Published var keepDockOpenDuringPreview: Bool {
@@ -275,6 +284,7 @@ final class AppSettings: ObservableObject {
         dockPreviewsEnabled = defaults.object(forKey: Key.dockPreviews) as? Bool ?? true
         fullScreenDockEnabled = defaults.object(forKey: Key.fullScreenDock) as? Bool ?? true
         fullScreenDockInWindowsApp = defaults.object(forKey: Key.fullScreenDockInWindowsApp) as? Bool ?? false
+        fullScreenMenuBarInWindowsApp = defaults.object(forKey: Key.fullScreenMenuBarInWindowsApp) as? Bool ?? false
         keepDockOpenDuringPreview = defaults.object(forKey: Key.keepDockOpen) as? Bool ?? true
         otherAppsScrollEnabled = defaults.object(forKey: Key.otherAppsScroll) as? Bool ?? false
         // Eski açık/kapalı ayarı: kapalıysa kapalı kalır.
@@ -952,6 +962,10 @@ private struct UsageTab: View {
                     .foregroundStyle(.secondary)
                 Toggle(tx("Windows App tam ekrandayken Dock'u göster", "Show the Dock while Windows App is in full screen"), isOn: $settings.fullScreenDockInWindowsApp)
                 Text(tx("Kapalıyken Windows App tam ekrandayken ne Berth'ün şeridi ne macOS'un Dock'u açılır: imleç Dock'un kenarından bir nokta içeride tutulur, kenar Windows'ta kalır. Windows'ta görev çubuğu aynı kenarda ve otomatik gizliyse oradan açılmayabilir.", "When off, neither Berth's strip nor the macOS Dock opens while Windows App is in full screen: the pointer is kept a point away from the Dock's edge, so the edge stays with Windows. If the Windows taskbar hides automatically on the same edge, it may not open from there."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Toggle(tx("Windows App tam ekrandayken menü çubuğunu göster", "Show the menu bar while Windows App is in full screen"), isOn: $settings.fullScreenMenuBarInWindowsApp)
+                Text(tx("Kapalıyken imleç üst kenara değince macOS'un menü çubuğu ve Windows App'in başlığı inmez; imleç üst kenardan birkaç nokta aşağıda tutulur. Köşeler serbesttir, sıcak köşe çalışır. Menü çubuğuna ihtiyaç olursa Windows App'i tam ekrandan çıkarmak yeter.", "When off, the macOS menu bar and Windows App's title don't slide down when the pointer reaches the top edge; the pointer is kept a few points below it. Corners stay free, so hot corners still work. If you need the menu bar, take Windows App out of full screen."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

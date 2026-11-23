@@ -53,7 +53,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     private let dockWatcher = DockWatcher()
     private lazy var dockPreview = DockPreviewController(thumbnails: thumbnails)
     private let fullScreenDock = FullScreenDockController()
-    private let dockEdgeGuard = DockEdgeGuard()
+    private let edgeGuard = FullScreenEdgeGuard()
     /// Bu tarihe kadar başka uygulamanın öne gelmesi kaplamayı kapatmaz: pencere kapatırken
     /// uygulama bir an öne alınabiliyor, kullanıcı buradan ayrılmak istemedi.
     private var ignoreActivationUntil = Date.distantPast
@@ -156,8 +156,8 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             if enabled { self?.fullScreenDock.start() } else { self?.fullScreenDock.stop() }
         }
         if settings.fullScreenDockEnabled { fullScreenDock.start() }
-        settings.onFullScreenDockInWindowsAppChange = { [weak self] show in self?.dockEdgeGuard.configure(enabled: !show) }
-        dockEdgeGuard.configure(enabled: !settings.fullScreenDockInWindowsApp)
+        settings.onWindowsAppEdgesChange = { [weak self] in self?.configureEdgeGuard() }
+        configureEdgeGuard()
         trackpadGesture.onAction = { [weak self] action in
             guard let self, !self.isOpen else { return }
             switch action {
@@ -743,6 +743,10 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     private var keyboardReclaims = 0
     private var memoryRelease: DispatchWorkItem?
     let remoteBridge = RemoteBridge()
+
+    private func configureEdgeGuard() {
+        edgeGuard.configure(dock: !settings.fullScreenDockInWindowsApp, menuBar: !settings.fullScreenMenuBarInWindowsApp)
+    }
 
     private func takeKeyboardIfGrabbed() {
         guard let front = NSWorkspace.shared.frontmostApplication,

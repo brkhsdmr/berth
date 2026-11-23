@@ -950,3 +950,19 @@ final class DockEdgeGuardTests: XCTestCase {
         XCTAssertNil(DockEdge.bottom.guarded(CGPoint(x: 500, y: 1199.5), display: display, displays: [display, below]))
     }
 }
+
+final class MenuBarEdgeTests: XCTestCase {
+    let display = CGRect(x: 0, y: 0, width: 1920, height: 1200)
+
+    func testTopEdgeIsKeptAwayButCornersStayFree() {
+        XCTAssertEqual(MenuBarEdge.guarded(CGPoint(x: 900, y: 0), display: display, displays: [display]), CGPoint(x: 900, y: 6))
+        XCTAssertNil(MenuBarEdge.guarded(CGPoint(x: 900, y: 7), display: display, displays: [display]))
+        XCTAssertNil(MenuBarEdge.guarded(CGPoint(x: 3, y: 0), display: display, displays: [display]))
+        XCTAssertNil(MenuBarEdge.guarded(CGPoint(x: 1915, y: 0), display: display, displays: [display]))
+    }
+
+    func testDisplayAboveIsReachable() {
+        let above = CGRect(x: 0, y: -1080, width: 1920, height: 1080)
+        XCTAssertNil(MenuBarEdge.guarded(CGPoint(x: 900, y: 0), display: display, displays: [display, above]))
+    }
+}

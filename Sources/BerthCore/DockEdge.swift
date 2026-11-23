@@ -76,3 +76,18 @@ public enum DockEdge: String, Sendable {
         return result
     }
 }
+
+/// Tam ekranda menü çubuğu ve pencere başlığı imleç üst kenara değince iner.
+public enum MenuBarEdge {
+    /// Üst kenara dayanan imleci `margin` nokta aşağıda tutar (CG koordinatları). Sol ve sağ uçtaki
+    /// `cornerMargin` genişliğine dokunulmaz: sıcak köşeler orada. Kenarın üstünde başka ekran
+    /// varsa da dokunulmaz. Değişmesi gerekmiyorsa nil.
+    public static func guarded(_ point: CGPoint, display: CGRect, displays: [CGRect], margin: CGFloat = 6, cornerMargin: CGFloat = 24) -> CGPoint? {
+        guard point.y < display.minY + margin,
+              point.x > display.minX + cornerMargin, point.x < display.maxX - 1 - cornerMargin
+        else { return nil }
+        let beyond = CGPoint(x: point.x, y: display.minY - 1)
+        if displays.contains(where: { $0 != display && $0.contains(beyond) }) { return nil }
+        return CGPoint(x: point.x, y: display.minY + margin)
+    }
+}
