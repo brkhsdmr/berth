@@ -6,6 +6,8 @@ Mission Control ve Görev Görünümü her açılışta her şeyi yeniden dizer.
 
 Ücretsiz ve açık kaynak (GPL-3.0). [English](README.md)
 
+Özellikle Mac'inden Windows App ile bir Windows bilgisayarda çalışıyorsan ya da Mac'inde Windows klavyesi ve fare kullanıyorsan işine yarar: bkz. [Mac'ten Windows bilgisayarda çalışmak](#macten-windows-bilgisayarda-çalışmak) ve [Harici klavye ve fareler](#harici-klavye-ve-fareler).
+
 ![macOS'ta Berth: her uygulama kendi yerinde, canlı önizlemeler, üstte masaüstü şeridi (pencere içerikleri bu görüntü için yer tutucuyla değiştirildi)](docs/images/scene.jpg)
 
 Tanıtım, macOS ve Windows (pencere içerikleri yer tutucuyla değiştirildi):
@@ -24,11 +26,12 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **Bir uygulamanın pencereleri (Windows).** Üç parmakla aşağı kaydırınca ya da Ctrl+Alt+Shift+↓ ile öndeki uygulamanın tüm pencereleri büyük bir ızgarada görünür; Mac'teki App Exposé gibi.
 - **Dock ve görev çubuğu önizlemeleri.** Bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki pencereleri görünür.
 - **Mac ↔ Windows köprüsü.** Microsoft'un Windows App'i (Uzak Masaüstü) ile bir Windows bilgisayara bağlıyken Mac trackpad'inde yukarı kaydırmak o bilgisayardaki Berth'i açar, aşağı kaydırmak oradaki öndeki uygulamanın pencerelerini gösterir. Bir Mac'e birden çok bilgisayar bağlanabilir.
-- **Farede hız ve ivme ayrı (macOS, isteğe bağlı).** macOS bir farenin hızını ivme eğrisine bağlar. Berth her harici farede ikisini ayrı ayarlayabilir, Windows'taki "İşaretçi hassasiyetini artır" hissine yakın: hız kısa hareketi, ivme uzun hareketi belirler.
+- **Farede hız ve ivme ayrı (macOS, isteğe bağlı).** macOS bir farenin hızını ivme eğrisine bağlar. Berth her harici farede ikisini ayrı ayarlayabilir, Windows'taki "İşaretçi hassasiyetini artır" hissine yakın: hız kısa hareketi, ivme uzun hareketi belirler. macOS'un kendi ayarlarını yok sayan Bluetooth LE farelerde de çalışır.
 - **Trackpad hareketleri tek tabloda (macOS).** Üç ve dört parmakla yukarı ve aşağı kaydırmanın ne yapacağını seçersin: Berth sahnesi, Mission Control, App Exposé ya da hiçbir şey. macOS'un kendi ayarı da buna göre güncellenir, Sistem Ayarları'nın gösteremediği birleşimler dahil.
 - **Windows'a yakın niteleme tuşları (macOS).** Dahili klavye için tek düğme (Kontrol → Dünya, Komut → Kontrol, Dünya → Komut), her Windows klavyesi için bir düğme (Ctrl → ⌘, Windows → ⌥, Alt → ⌃); macOS'un kendi Niteleme Tuşları ayarına yazılır. İstersen Windows App öndeyken kalkar, uzak bilgisayarda Ctrl yine Ctrl olur.
 - **Kenar geçişi (macOS, isteğe bağlı).** İmleci ekranın sol ya da sağ kenarına dayayınca bir masaüstü o yana geçilir; istersen yalnızca seçtiğin niteleme tuşu basılıyken.
-- **Windows gibi fare tekerleği (macOS, isteğe bağlı).** macOS'un ivmeli tekerleği yerine her çentik sabit sayıda satır kaydırır (varsayılan 3); trackpad değişmez.
+- **Windows gibi fare tekerleği (macOS, isteğe bağlı).** macOS'un ivmeli tekerleği yerine her çentik kısa ve yumuşak bir kaymayla sabit sayıda satır kaydırır (varsayılan 3), hızlı çevirince daha uzağa gider; trackpad değişmez.
+- **Tam ekranda Windows App'e karışılmaz (macOS).** Tam ekran uzak masaüstünün üstüne macOS'un Dock'u ve menü çubuğu inmez, sıcak köşe yine Berth'i açar. Bkz. [aşağısı](#macten-windows-bilgisayarda-çalışmak).
 - **Gizlilik.** Hesap yok, analiz yok. Mac–Windows köprüsünü açmadıkça ağ bağlantısı da yok. Bkz. [gizlilik](store/privacy.md).
 
 <table><tr>
@@ -63,6 +66,8 @@ Dock'taki bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki ve
 
 Windows 11'de aynı sahne: canlı DWM önizlemeleri, sanal masaüstü şeridi ve kurulu uygulamalar için simge ızgarası.
 
+> **Not:** Windows sürümü çalışıyor ama Mac sürümünden ağır: sahneyi açmak ve aramak, özellikle çok pencere açıkken yavaş hissettirebilir. Şimdilik ağırlık Mac sürümünde; Windows'ta Berth en çok Mac köprüsünün öbür ucu olarak işe yarar.
+
 ![Windows 11'de Berth: sabit hücrelerde uygulamalar, açık olmayanlar boş yer olarak (pencere içerikleri bu görüntü için yer tutucuyla değiştirildi)](docs/images/windows-scene.jpg)
 
 ![“note” yazınca Not Defteri penceresi öne çıkar, adı uyan kurulu uygulamalar listelenir](docs/images/windows-search.jpg)
@@ -77,6 +82,25 @@ Windows 11'de aynı sahne: canlı DWM önizlemeleri, sanal masaüstü şeridi ve
 | ![Genel](docs/images/windows-settings-general.png) | |
 
 </details>
+
+## Mac'ten Windows bilgisayarda çalışmak
+
+Günün Microsoft'un Windows App'inde (Uzak Masaüstü) geçiyorsa Mac çoğu zaman ayağına dolanır: Dock ve menü çubuğu uzak masaüstünün üstüne iner, kısayollar yanlış tuşlara düşer, Mac hareketleri pencerede kalır. Berth bunları düzeltir. Hepsi isteğe bağlı, Ayarlar'dan kapatılabilir.
+
+- **Kenarlar Windows'un.** Tam ekranda imleç alt ya da üst kenara değince macOS'un Dock'u ve menü çubuğu inmez, Berth'ün Dock şeridi de çıkmaz. Köşeler serbest kalır, sıcak köşen çalışmaya devam eder.
+- **Berth uzak masaüstünün üstünde açılır.** Windows App tam ekrandayken ve klavyeyi tutarken bile sıcak köşe ya da kısayol Mac'in sahnesini açar. Berth klavyeyi ödünç alır, bir pencere seçince geri verir.
+- **Hareketler bilgisayara ulaşır.** Bilgisayarda da Berth çalışıyorsa Mac trackpad'inde yukarı kaydırmak oradaki Berth'i açar, aşağı kaydırmak oradaki öndeki uygulamanın pencerelerini gösterir. Bir Mac'e birden çok bilgisayar bağlanabilir.
+- **Tuşlar iki tarafta da üstünde yazdığı gibi.** Mac'te Windows klavyesi Mac dizilimine geçer (Ctrl → ⌘, Windows → ⌥, Alt → ⌃), Ctrl+C ve Ctrl+V parmağının alıştığı yerde olur. Windows App öndeyken eşleme kalkar, her tuş Windows'a kendi adıyla gider.
+- **Fare tekerleğine dokunulmaz.** Windows App'te Windows zaten kendi ayarıyla kaydırır.
+
+## Harici klavye ve fareler
+
+macOS, Apple'ın kendi trackpad'i ve klavyelerine göre ayarlı. Birçok başka fare ve klavye kutudan çıktığı haliyle yavaş ya da tuhaf hissettirir; macOS'un bazı ayarları Bluetooth LE aygıtlara hiç ulaşmaz. Berth boşlukları doldurur:
+
+- **Her farede hız ve ivme**, ayrı ayrı, farenin Windows'taki hissine yakın. Bluetooth LE fareler (Logitech M240 ve Pebble M350s ile denendi) macOS'un kendi hız ve ivme ayarlarını yok sayar; bunlarda ivmeyi Berth kendisi hesaplar.
+- **Yetişen bir tekerlek.** Her çentik Windows'taki gibi sabit bir mesafeyi kısa ve yumuşak bir kaymayla kaydırır; hızlı çevirince dört kata kadar uzağa gider, tekerleği tekrar tekrar çevirmen gerekmez. Trackpad ve Magic Mouse değişmez.
+- **Windows klavyesine Mac dizilimi.** macOS'un kendi Niteleme Tuşları ayarına yazılır ve Bluetooth LE klavyelere de uygulanır (Microsoft Designer Compact Keyboard ile denendi); macOS bu ayarı onlarda ancak klavye yeniden bağlanınca alıyor.
+- **Kenar geçişi.** İmleci ekranın sol ya da sağ kenarına dayayınca bir masaüstü o yana geçilir; farede olmayan kaydırma hareketinin yerini tutar.
 
 ## Gereksinimler
 

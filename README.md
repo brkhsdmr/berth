@@ -6,6 +6,8 @@ Mission Control and Task View rearrange everything each time you open them. Bert
 
 Free and open source (GPL-3.0). [Türkçe](README.tr.md)
 
+Especially handy if you work on a Windows PC from your Mac through Windows App, or use a Windows keyboard and mouse with your Mac: see [Working on a Windows PC from your Mac](#working-on-a-windows-pc-from-your-mac) and [External keyboards and mice](#external-keyboards-and-mice).
+
 ![Berth on macOS: every app in its own place with live previews, the desktop strip at the top (window contents replaced with placeholders for this screenshot)](docs/images/scene.jpg)
 
 Demo, macOS and Windows (window contents replaced with placeholders):
@@ -24,11 +26,12 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 - **One app's windows (Windows).** Swipe down with three fingers, or press Ctrl+Alt+Shift+↓, to see every window of the app in front in a large grid, like App Exposé on the Mac.
 - **Dock and taskbar previews.** Hover an icon to see that app's windows on every desktop.
 - **Mac ↔ Windows bridge.** When you're connected to a Windows PC with Microsoft's Windows App (Remote Desktop), swiping up on the Mac trackpad opens Berth on that PC instead, and swiping down shows the windows of the app in front there. Several PCs can connect to one Mac.
-- **Mouse speed and acceleration, separately (macOS, optional).** macOS ties a mouse's speed to its acceleration curve. Berth can set them apart for each external mouse, closer to Windows' "Enhance pointer precision": speed for short moves, acceleration for long ones.
+- **Mouse speed and acceleration, separately (macOS, optional).** macOS ties a mouse's speed to its acceleration curve. Berth can set them apart for each external mouse, closer to Windows' "Enhance pointer precision": speed for short moves, acceleration for long ones. Works with Bluetooth LE mice too, which ignore macOS's own settings.
 - **Trackpad gestures in one table (macOS).** Choose what three- and four-finger swipes up and down do: the Berth scene, Mission Control, App Exposé or nothing. macOS's own setting is updated to match, including combinations System Settings can't show.
 - **Windows-like modifier keys (macOS).** One switch for the built-in keyboard (Control → Globe, Command → Control, Globe → Command) and one per Windows keyboard (Ctrl → ⌘, Windows → ⌥, Alt → ⌃), written to macOS's own Modifier Keys setting. Optionally lifted while Windows App is in front, so Ctrl stays Ctrl on the remote PC.
 - **Edge switching (macOS, optional).** Push the pointer against the left or right edge of the screen to move one desktop over, optionally only while holding a modifier key you choose.
-- **Windows-like mouse wheel (macOS, optional).** Every notch scrolls a fixed number of lines (3 by default) instead of macOS's accelerated wheel; the trackpad is unchanged.
+- **Windows-like mouse wheel (macOS, optional).** Every notch scrolls a fixed number of lines (3 by default) with a short smooth glide instead of macOS's accelerated wheel, and a fast spin goes further; the trackpad is unchanged.
+- **Windows App stays in charge in full screen (macOS).** The macOS Dock and menu bar no longer slide over a full-screen remote desktop, while the hot corner still opens Berth. See [below](#working-on-a-windows-pc-from-your-mac).
 - **Private by design.** No account, no analytics, no network unless you turn on the Mac–Windows bridge. See [privacy](store/privacy.md).
 
 <table><tr>
@@ -63,6 +66,8 @@ Hover a Dock icon to see that app's windows on every desktop and full-screen spa
 
 The same scene on Windows 11, with live DWM thumbnails, the virtual desktop strip and an icon grid for installed apps.
 
+> **Note:** the Windows version works, but it's heavier than the Mac version: opening the scene and searching can feel slow, especially with many windows open. The Mac version gets most of the attention for now; on Windows, Berth is most useful as the other end of the Mac bridge.
+
 ![Berth on Windows 11: pinned apps in fixed cells, apps that aren't running shown as empty places (window contents replaced with placeholders for this screenshot)](docs/images/windows-scene.jpg)
 
 ![Typing "note" highlights the Notepad window and lists matching installed apps](docs/images/windows-search.jpg)
@@ -77,6 +82,25 @@ The same scene on Windows 11, with live DWM thumbnails, the virtual desktop stri
 | ![General](docs/images/windows-settings-general.png) | |
 
 </details>
+
+## Working on a Windows PC from your Mac
+
+If you spend your day in Microsoft's Windows App (Remote Desktop), the Mac tends to get in the way: the Dock and the menu bar slide over the remote desktop, shortcuts land on the wrong keys, and Mac gestures stop at the window. Berth smooths these out. Each one is optional and can be turned off in Settings.
+
+- **The edges belong to Windows.** In full screen, the macOS Dock and menu bar no longer slide in when the pointer touches the bottom or top edge, and Berth's own Dock strip stays away too. The corners stay free, so your hot corner still works.
+- **Berth opens over the remote desktop.** A hot corner or shortcut opens the Mac scene even while Windows App is in full screen and holds the keyboard. Berth borrows the keyboard and gives it back when you pick a window.
+- **Gestures reach the PC.** With Berth running on the PC as well, swiping up on the Mac trackpad opens Berth there, and swiping down shows the windows of the app in front there. Several PCs can connect to one Mac.
+- **Keys work as labeled on each side.** On the Mac, a Windows keyboard gets a Mac layout (Ctrl → ⌘, Windows → ⌥, Alt → ⌃), so Ctrl+C and Ctrl+V are where your fingers expect them. While Windows App is in front the mapping is lifted, and every key reaches Windows as labeled.
+- **The mouse wheel is left alone** in Windows App, where Windows already scrolls with its own settings.
+
+## External keyboards and mice
+
+macOS is tuned for Apple's own trackpad and keyboards. Many other mice and keyboards feel slow or wrong out of the box, and several macOS settings don't reach Bluetooth LE devices at all. Berth fills the gaps:
+
+- **Speed and acceleration for each mouse**, set separately, closer to how a mouse feels on Windows. Bluetooth LE mice (tested with Logitech M240 and Pebble M350s) ignore macOS's own speed and acceleration settings; for them Berth works out the acceleration itself.
+- **A wheel that keeps up.** Each notch scrolls a fixed distance with a short smooth glide, like on Windows, and a fast spin goes up to four times further, so you don't have to spin it again and again. The trackpad and Magic Mouse are unchanged.
+- **Windows keyboards with a Mac layout**, written to macOS's own Modifier Keys setting and applied to Bluetooth LE keyboards as well (tested with Microsoft Designer Compact Keyboard), where macOS only picks the setting up when the keyboard reconnects.
+- **Edge switching.** Push the pointer against the left or right edge of the screen to move one desktop over, a stand-in for the swipe a mouse doesn't have.
 
 ## Requirements
 
