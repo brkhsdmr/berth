@@ -19,6 +19,11 @@ final class RemoteBridge: @unchecked Sendable {
     private let queue = DispatchQueue(label: "berth.remote-bridge")
     private var listener: NWListener?
     private var clients: [ObjectIdentifier: (connection: NWConnection, name: String)] = [:]
+    /// Her istemciden son satırın geldiği an. Windows sessizlikte 25 sn'de bir PING atar; uyku ya da
+    /// ağ değişiminde kopan bağlantı Mac'te kapanmadan kalabildiği için uzun sessizlik ölü sayılır.
+    private var lastSeen: [ObjectIdentifier: Date] = [:]
+    private var reaper: DispatchSourceTimer?
+    private static let silenceLimit: TimeInterval = 90
     private var pending: [ObjectIdentifier: NWConnection] = [:]
     private var token = ""
     /// Bağlantısı kesilen bilgisayarlar (küçük harfle); kod doğru olsa da reddedilir.
@@ -41,6 +46,7 @@ final class RemoteBridge: @unchecked Sendable {
                 }
                 listener.start(queue: self.queue)
                 self.listener = listener
+                self.startReaper()
             } catch {
                 self.log.error("Dinleyici açılamadı: \(String(describing: error), privacy: .public)")
             }
@@ -51,6 +57,9 @@ final class RemoteBridge: @unchecked Sendable {
         queue.async {
             self.listener?.cancel()
             self.listener = nil
+            self.reaper?.cancel()
+            self.reaper = nil
+            self.lastSeen = [:]
             self.pending.values.forEach { $0.cancel() }
             self.clients.values.forEach { $0.connection.cancel() }
             self.pending = [:]
@@ -161,6 +170,7 @@ final class RemoteBridge: @unchecked Sendable {
 
     private func handle(_ line: String, from connection: NWConnection) {
         let id = ObjectIdentifier(connection)
+        if clients[id] != nil { lastSeen[id] = Date() }
         let parts = line.split(separator: " ", maxSplits: 2).map(String.init)
         if parts.first == "HELLO", pending[id] != nil {
             guard parts.count >= 2, !token.isEmpty, parts[1] == token else {
@@ -173,7 +183,15 @@ final class RemoteBridge: @unchecked Sendable {
                 return
             }
             pending[id] = nil
+            // Aynı bilgisayar yeniden bağlandıysa eski bağlantısı ölüdür: kapanmamış olsa da düşürülür,
+            // yoksa listede aynı ad birikir.
+            for (oldID, old) in clients where old.name.caseInsensitiveCompare(name) == .orderedSame {
+                clients[oldID] = nil
+                lastSeen[oldID] = nil
+                old.connection.cancel()
+            }
             clients[id] = (connection, name)
+            lastSeen[id] = Date()
             connection.send(content: Data("OK\n".utf8), completion: .contentProcessed { _ in })
             publish()
         } else if parts.first == "PING", clients[id] != nil {
@@ -181,8 +199,29 @@ final class RemoteBridge: @unchecked Sendable {
         }
     }
 
+    private func startReaper() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let now = Date()
+            let dead = self.clients.keys.filter { now.timeIntervalSince(self.lastSeen[$0] ?? .distantPast) > Self.silenceLimit }
+            guard !dead.isEmpty else { return }
+            for id in dead {
+                self.log.info("Sessiz bağlantı düşürüldü: \(self.clients[id]?.name ?? "", privacy: .public)")
+                self.clients[id]?.connection.cancel()
+                self.clients[id] = nil
+                self.lastSeen[id] = nil
+            }
+            self.publish()
+        }
+        timer.resume()
+        reaper = timer
+    }
+
     private func drop(_ id: ObjectIdentifier) {
         pending[id] = nil
+        lastSeen[id] = nil
         if clients.removeValue(forKey: id) != nil { publish() }
     }
 
