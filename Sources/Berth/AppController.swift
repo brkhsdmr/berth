@@ -53,6 +53,7 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     private let dockWatcher = DockWatcher()
     private lazy var dockPreview = DockPreviewController(thumbnails: thumbnails)
     private let fullScreenDock = FullScreenDockController()
+    private let dockEdgeGuard = DockEdgeGuard()
     /// Bu tarihe kadar başka uygulamanın öne gelmesi kaplamayı kapatmaz: pencere kapatırken
     /// uygulama bir an öne alınabiliyor, kullanıcı buradan ayrılmak istemedi.
     private var ignoreActivationUntil = Date.distantPast
@@ -144,7 +145,9 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
         fullScreenDock.liveDockFrame = { [weak self] in self?.dockWatcher.liveDockFrame() }
         fullScreenDock.isBlocked = { [weak self] in
             guard let self else { return true }
-            return self.isOpen || self.isPlacingSpace || !self.settings.dockPreviewsEnabled
+            if self.isOpen || self.isPlacingSpace || !self.settings.dockPreviewsEnabled { return true }
+            return !self.settings.fullScreenDockInWindowsApp
+                && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.windowsAppID
         }
         fullScreenDock.isMouseInPreview = { [weak self] in self?.dockPreview.isMouseInPanel ?? false }
         fullScreenDock.onHover = { [weak self] item in self?.dockPreview.dockItemChanged(item) }
@@ -153,6 +156,8 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
             if enabled { self?.fullScreenDock.start() } else { self?.fullScreenDock.stop() }
         }
         if settings.fullScreenDockEnabled { fullScreenDock.start() }
+        settings.onFullScreenDockInWindowsAppChange = { [weak self] show in self?.dockEdgeGuard.configure(enabled: !show) }
+        dockEdgeGuard.configure(enabled: !settings.fullScreenDockInWindowsApp)
         trackpadGesture.onAction = { [weak self] action in
             guard let self, !self.isOpen else { return }
             switch action {

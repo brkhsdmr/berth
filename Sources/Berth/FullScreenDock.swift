@@ -328,3 +328,99 @@ final class DockStripView: NSView {
         onChoose?(icons[released].entry)
     }
 }
+
+/// Windows App tam ekrandayken macOS'un Dock'u açılmasın diye imleci Dock kenarından bir nokta
+/// içeride tutar. macOS tam ekranda Dock'u imleç son piksel sırasına değince açıyor ve bunu başka
+/// bir uygulama için kapatmanın yolu yok (yalnızca uygulamanın kendi sunum seçenekleri). Bedeli:
+/// Windows'ta aynı kenardaki otomatik gizlenen görev çubuğu açılmayabilir.
+@MainActor
+final class DockEdgeGuard {
+    private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
+    private var observers: [NSObjectProtocol] = []
+    private var windowsAppInFront = false
+    private var edge = DockEdge.bottom
+    private var fullScreenCache: (display: CGDirectDisplayID, at: Date, value: Bool)?
+
+    private static let windowsAppID = "com.microsoft.rdc.macos"
+    /// Kenardan bu kadar nokta içeride tutulur. 2 yetmedi: imleç 1198'de (1200 yükseklik) dururken
+    /// Dock yine açıldı (27.2).
+    static let margin: CGFloat = 6
+
+    func configure(enabled: Bool) {
+        if enabled { start() } else { stop() }
+    }
+
+    private func start() {
+        guard tap == nil else { return }
+        let mask = [CGEventType.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+            .reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+        let callback: CGEventTapCallBack = { _, type, event, context in
+            guard let context else { return Unmanaged.passUnretained(event) }
+            let guardian = Unmanaged<DockEdgeGuard>.fromOpaque(context).takeUnretainedValue()
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                MainActor.assumeIsolated { if let tap = guardian.tap { CGEvent.tapEnable(tap: tap, enable: true) } }
+                return Unmanaged.passUnretained(event)
+            }
+            MainActor.assumeIsolated { guardian.handle(event) }
+            return Unmanaged.passUnretained(event)
+        }
+        guard let created = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+                                              eventsOfInterest: mask, callback: callback,
+                                              userInfo: Unmanaged.passUnretained(self).toOpaque())
+        else { return }
+        tap = created
+        let runLoopSource = CFMachPortCreateRunLoopSource(nil, created, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        source = runLoopSource
+        refresh()
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
+            })
+        }
+    }
+
+    private func stop() {
+        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        tap = nil
+        source = nil
+        observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        observers.removeAll()
+    }
+
+    private func refresh() {
+        windowsAppInFront = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.windowsAppID
+        edge = DockEdge(orientation: UserDefaults(suiteName: "com.apple.dock")?.string(forKey: "orientation"))
+        fullScreenCache = nil
+    }
+
+    private func handle(_ event: CGEvent) {
+        guard windowsAppInFront else { return }
+        let point = event.location
+        var display: CGDirectDisplayID = 0
+        var count: UInt32 = 0
+        guard CGGetDisplaysWithPoint(point, 1, &display, &count) == .success, count > 0 else { return }
+        let bounds = CGDisplayBounds(display)
+        let all = NSScreen.screens.map { CGDisplayBounds($0.displayID) }
+        guard let target = edge.guarded(point, display: bounds, displays: all, margin: Self.margin), isFullScreen(display) else { return }
+        event.location = target
+        // Kenara doğru itiş de Dock'u açabiliyor: o yöndeki hareket sıfırlanır.
+        switch edge {
+        case .bottom: if event.getIntegerValueField(.mouseEventDeltaY) > 0 { event.setIntegerValueField(.mouseEventDeltaY, value: 0) }
+        case .left: if event.getIntegerValueField(.mouseEventDeltaX) < 0 { event.setIntegerValueField(.mouseEventDeltaX, value: 0) }
+        case .right: if event.getIntegerValueField(.mouseEventDeltaX) > 0 { event.setIntegerValueField(.mouseEventDeltaX, value: 0) }
+        }
+    }
+
+    /// Masaüstü okuması pahalı değil ama her olayda yapılmasın: kenarda kısa süre önbellekte tutulur.
+    private func isFullScreen(_ display: CGDirectDisplayID) -> Bool {
+        if let cache = fullScreenCache, cache.display == display, Date().timeIntervalSince(cache.at) < 1 { return cache.value }
+        guard let screen = NSScreen.screens.first(where: { $0.displayID == display }) else { return false }
+        let value = SceneSource.currentSpaceIsFullScreen(on: screen)
+        fullScreenCache = (display, Date(), value)
+        return value
+    }
+}

@@ -81,6 +81,7 @@ Ayarlar > Açılış sekmesinde seçilir; hiçbiri sistem ayarını değiştirme
 - Arama kutusuna tıklanır ya da doğrudan yazılır; ⌘V yapıştırır, ⌘⌫ siler, Esc önce aramayı temizler.
 - Oklar seçimi en yakın önizlemeye taşır, ↩ seçilene geçer. ⌘1…⌘9 şeritteki o alana geçer.
 - Windows App gibi uzak masaüstü uygulamaları öndeyken klavyeyi kendileri yakalar; sahne açıkken uygulama öne alınır, kapanınca eski uygulama geri gelir. Windows App tam ekrandayken sol üst sıcak köşeden açılınca (imleç köşede, harici fareyle) Windows App Berth öne geçer geçmez kendini yeniden öne alıyordu ve sahne kapanıyordu; klavye alındıktan sonraki 1 sn içinde aynı uygulama kendiliğinden öne gelirse Berth odağı geri alır (en çok 3 kez).
+- Windows App tam ekrandayken Dock (Berth'ün kenar şeridi ve macOS'un Dock'u) varsayılan olarak açılmaz (Ayarlar > Genel > "Windows App tam ekrandayken Dock'u göster"). macOS tam ekranda Dock'u başka bir uygulama için kapatmaya izin vermiyor; `DockEdgeGuard` etkin bir olay musluğunda fare olaylarının konumunu Dock kenarından 6 nokta içeride tutar ve kenara doğru hareketi sıfırlar. 2 nokta yetmedi (imleç 1200 yükseklikte 1198'de dururken Dock açıldı). `CGWarpMouseCursorPosition` gerekmedi ve kenarda imleci takıltıyordu; yalnızca olay konumunu değiştirmek yetiyor (27.2). Bedeli: Windows'ta aynı kenardaki otomatik gizlenen görev çubuğu açılmayabilir.
 
 ## Birden çok ekran
 

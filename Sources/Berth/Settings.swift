@@ -22,6 +22,7 @@ final class AppSettings: ObservableObject {
         static let dockPreviews = "dockPreviewsEnabled"
         static let shortcut = "shortcut"
         static let fullScreenDock = "fullScreenDockEnabled"
+        static let fullScreenDockInWindowsApp = "fullScreenDockInWindowsApp"
         static let keepDockOpen = "keepDockOpenDuringPreview"
         static let windowPreviews = "windowPreviewsEnabled"
         static let otherAppsScroll = "otherAppsScrollEnabled"
@@ -189,6 +190,16 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Windows App tam ekrandayken Dock (Berth'ün şeridi ve macOS'unki) açılsın mı. Kapalıyken
+    /// (saptanmış) imleç Dock kenarından uzak tutulur (`DockEdgeGuard`).
+    @Published var fullScreenDockInWindowsApp: Bool {
+        didSet {
+            UserDefaults.standard.set(fullScreenDockInWindowsApp, forKey: Key.fullScreenDockInWindowsApp)
+            onFullScreenDockInWindowsAppChange?(fullScreenDockInWindowsApp)
+        }
+    }
+    var onFullScreenDockInWindowsAppChange: ((Bool) -> Void)?
+
     /// Dock otomatik gizliyken önizleme açık kaldıkça Dock gizlenmez.
     @Published var keepDockOpenDuringPreview: Bool {
         didSet { UserDefaults.standard.set(keepDockOpenDuringPreview, forKey: Key.keepDockOpen) }
@@ -263,6 +274,7 @@ final class AppSettings: ObservableObject {
         let defaults = UserDefaults.standard
         dockPreviewsEnabled = defaults.object(forKey: Key.dockPreviews) as? Bool ?? true
         fullScreenDockEnabled = defaults.object(forKey: Key.fullScreenDock) as? Bool ?? true
+        fullScreenDockInWindowsApp = defaults.object(forKey: Key.fullScreenDockInWindowsApp) as? Bool ?? false
         keepDockOpenDuringPreview = defaults.object(forKey: Key.keepDockOpen) as? Bool ?? true
         otherAppsScrollEnabled = defaults.object(forKey: Key.otherAppsScroll) as? Bool ?? false
         // Eski açık/kapalı ayarı: kapalıysa kapalı kalır.
@@ -936,6 +948,10 @@ private struct UsageTab: View {
                 Toggle(tx("Tam ekranda kenara değince Dock şeridini aç", "Show a Dock strip at the screen edge in full screen"), isOn: $settings.fullScreenDockEnabled)
                     .disabled(!settings.dockPreviewsEnabled)
                 Text(tx("macOS tam ekranda Dock'u her zaman açmıyor. Şerit, Dock'un olduğu kenarda aynı uygulamaları gösterir.", "macOS doesn't always show the Dock in full screen. The strip shows the same apps on the Dock's edge."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Toggle(tx("Windows App tam ekrandayken Dock'u göster", "Show the Dock while Windows App is in full screen"), isOn: $settings.fullScreenDockInWindowsApp)
+                Text(tx("Kapalıyken Windows App tam ekrandayken ne Berth'ün şeridi ne macOS'un Dock'u açılır: imleç Dock'un kenarından bir nokta içeride tutulur, kenar Windows'ta kalır. Windows'ta görev çubuğu aynı kenarda ve otomatik gizliyse oradan açılmayabilir.", "When off, neither Berth's strip nor the macOS Dock opens while Windows App is in full screen: the pointer is kept a point away from the Dock's edge, so the edge stays with Windows. If the Windows taskbar hides automatically on the same edge, it may not open from there."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

@@ -929,3 +929,24 @@ final class EdgeSwitchHoldKeysTests: XCTestCase {
         XCTAssertEqual(EdgeSwitch.HoldKeys([.command, .control, .function]).display, "fn ⌃⌘")
     }
 }
+
+final class DockEdgeGuardTests: XCTestCase {
+    let display = CGRect(x: 0, y: 0, width: 1920, height: 1200)
+
+    func testBottomEdgeIsKeptAway() {
+        XCTAssertEqual(DockEdge.bottom.guarded(CGPoint(x: 500, y: 1199.5), display: display, displays: [display]), CGPoint(x: 500, y: 1198))
+        XCTAssertNil(DockEdge.bottom.guarded(CGPoint(x: 500, y: 1197), display: display, displays: [display]))
+    }
+
+    func testSideEdges() {
+        XCTAssertEqual(DockEdge.left.guarded(CGPoint(x: 0, y: 600), display: display, displays: [display]), CGPoint(x: 1, y: 600))
+        XCTAssertEqual(DockEdge.right.guarded(CGPoint(x: 1919.8, y: 600), display: display, displays: [display]), CGPoint(x: 1918, y: 600))
+        XCTAssertNil(DockEdge.right.guarded(CGPoint(x: 1000, y: 600), display: display, displays: [display]))
+    }
+
+    /// Kenarın ötesinde başka ekran varsa imleç oraya geçebilmeli.
+    func testSharedEdgeIsLeftAlone() {
+        let below = CGRect(x: 0, y: 1200, width: 1920, height: 1080)
+        XCTAssertNil(DockEdge.bottom.guarded(CGPoint(x: 500, y: 1199.5), display: display, displays: [display, below]))
+    }
+}
