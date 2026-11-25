@@ -855,12 +855,25 @@ final class AppController: NSObject, NSApplicationDelegate, SceneViewDelegate {
     }
 
     private func perform(_ action: DockAppAction, on app: SceneApp) {
+        if action == .removeFromDock {
+            Task { @MainActor in
+                guard await DockKeep.remove(bundleID: app.id) else {
+                    Toast.show(tx("Dock'tan çıkarılamadı.", "Couldn't remove it from the Dock."))
+                    return
+                }
+                if app.isRunning {
+                    Toast.show(tx("\(app.name) Dock'tan çıkarıldı; simgesi uygulama kapanınca gider.", "\(app.name) was removed from the Dock; its icon goes away when the app quits."))
+                }
+            }
+            return
+        }
         guard let pid = app.pid else { return }
         do {
             switch action {
             case .hide: try WindowActivator.hideApp(pid: pid)
             case .show: NSRunningApplication(processIdentifier: pid)?.unhide()
             case .quit: try WindowActivator.quitApp(pid: pid)
+            case .removeFromDock: break
             }
         } catch {
             report(error)

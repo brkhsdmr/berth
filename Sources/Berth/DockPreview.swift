@@ -223,13 +223,14 @@ enum DockTrace {
 
 /// Önizleme başlığındaki uygulama düğmeleri: Dock'un sağ tık menüsünün karşılığı.
 enum DockAppAction: Equatable {
-    case hide, show, quit
+    case hide, show, quit, removeFromDock
 
     var label: String {
         switch self {
         case .hide: return tx("Gizle", "Hide")
         case .show: return tx("Göster", "Show")
         case .quit: return tx("Çık", "Quit")
+        case .removeFromDock: return tx("Dock'tan çıkar", "Remove from Dock")
         }
     }
 
@@ -238,6 +239,7 @@ enum DockAppAction: Equatable {
         case .hide: return "eye.slash"
         case .show: return "eye"
         case .quit: return "power"
+        case .removeFromDock: return "pin.slash"
         }
     }
 
@@ -424,10 +426,16 @@ final class DockPreviewController {
 
         let id = item.bundleID
         let snapshot = SceneSource.snapshot(for: screen, pinned: [])
-        let app = id.flatMap { snapshot.app($0) } ?? snapshot.apps.values.first { $0.name == item.title }
-        // Kapalı uygulamanın paneli yok; penceresiz ama çalışan uygulamada çıkılabilsin diye açılır.
-        // Eylemi de penceresi de olmayan (penceresiz Finder) panelin gösterecek bir şeyi yok.
-        guard let app, app.isRunning, !(app.windows.isEmpty && app.id == "com.apple.finder") else {
+        var app = id.flatMap { snapshot.app($0) } ?? snapshot.apps.values.first { $0.name == item.title }
+        // Kapalı ama Dock'ta tutulan uygulamada yalnızca "Dock'tan çıkar" için küçük panel açılır.
+        if app?.isRunning != true, let id, DockKeep.isKept(bundleID: id) {
+            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+            app = SceneApp(id: id, name: item.title, icon: url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSWorkspace.shared.icon(for: .application),
+                           isRunning: false, pid: nil, bundleURL: url, windows: [])
+        }
+        // Penceresiz ama çalışan uygulamada çıkılabilsin diye açılır. Eylemi de penceresi de
+        // olmayan (penceresiz Finder) panelin gösterecek bir şeyi yok.
+        guard let app, app.isRunning || app.bundleURL != nil, !(app.windows.isEmpty && app.id == "com.apple.finder") else {
             DockTrace.log("gosterilmedi: \(item.title) calismiyor ya da bulunamadi (kimlik \(id ?? "-"))")
             hide()
             return
@@ -635,7 +643,8 @@ final class DockPreviewView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         buildHeader(app, width: width, hidden: 0)
-        let note = label(tx("Açık pencere yok", "No open windows"), font: .systemFont(ofSize: 11.5), color: NSColor(calibratedWhite: 1, alpha: 0.62))
+        let note = label(app.isRunning ? tx("Açık pencere yok", "No open windows") : tx("Açık değil", "Not running"),
+                         font: .systemFont(ofSize: 11.5), color: NSColor(calibratedWhite: 1, alpha: 0.62))
         note.frame = CGRect(x: Self.padding + 2, y: Self.header, width: width - 2 * Self.padding - 4, height: 16)
         layer?.addSublayer(note)
         CATransaction.commit()
@@ -706,10 +715,15 @@ final class DockPreviewView: NSView {
 
     /// Finder'ın Dock menüsünde de "Çık" yoktur: kapatılması beklenen bir uygulama değil.
     private static func actions(for app: SceneApp) -> [DockAppAction] {
-        let isHidden = app.pid.flatMap { NSRunningApplication(processIdentifier: $0)?.isHidden } ?? false
-        // Penceresi yoksa gizleyecek bir şey de yoktur.
-        var actions: [DockAppAction] = app.windows.isEmpty && !isHidden ? [] : [isHidden ? .show : .hide]
-        if app.id != "com.apple.finder" { actions.append(.quit) }
+        var actions: [DockAppAction] = []
+        if app.isRunning {
+            let isHidden = app.pid.flatMap { NSRunningApplication(processIdentifier: $0)?.isHidden } ?? false
+            // Penceresi yoksa gizleyecek bir şey de yoktur.
+            if !app.windows.isEmpty || isHidden { actions.append(isHidden ? .show : .hide) }
+        }
+        // Dock'un sağ tık > Seçenekler > "Dock'ta Tut" yolunun kısası.
+        if app.id != "com.apple.finder", DockKeep.isKept(bundleID: app.id) { actions.append(.removeFromDock) }
+        if app.isRunning, app.id != "com.apple.finder" { actions.append(.quit) }
         return actions
     }
 
@@ -873,5 +887,71 @@ final class DockPreviewView: NSView {
         } else {
             onChoose?(card.window)
         }
+    }
+}
+
+/// Dock'ta tutulan uygulamalar ve Dock'tan çıkarma. Dock'un kendi menüsü Erişilebilirlik ile açılıp
+/// Seçenekler altındaki "Dock'ta Tut" (çalışıyorsa, işaretli) ya da "Dock'tan Çıkar" (çalışmıyorsa)
+/// seçilir: kullanıcının sağ tıkla yaptığının aynısı, Dock yeniden başlamaz. Menü başlıkları Dock'un
+/// kendi dil dosyalarından okunur, macOS hangi dilde olursa olsun eşleşir.
+@MainActor
+enum DockKeep {
+    /// `com.apple.dock persistent-apps` içinde mi.
+    static func isKept(bundleID: String) -> Bool {
+        CFPreferencesAppSynchronize("com.apple.dock" as CFString)
+        guard let apps = CFPreferencesCopyAppValue("persistent-apps" as CFString, "com.apple.dock" as CFString) as? [[String: Any]]
+        else { return false }
+        return apps.contains { (($0["tile-data"] as? [String: Any])?["bundle-identifier"] as? String) == bundleID }
+    }
+
+    private static let titles: (options: Set<String>, keep: Set<String>, remove: Set<String>) = {
+        let resources = URL(fileURLWithPath: "/System/Library/CoreServices/Dock.app/Contents/Resources")
+        var options: Set<String> = ["Options", "Seçenekler"]
+        var keep: Set<String> = ["Keep in Dock", "Dock’ta Tut"]
+        var remove: Set<String> = ["Remove from Dock", "Dock’tan Çıkar"]
+        let folders = (try? FileManager.default.contentsOfDirectory(at: resources, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where folder.pathExtension == "lproj" {
+            guard let strings = NSDictionary(contentsOf: folder.appendingPathComponent("DockMenus.strings")) as? [String: String] else { continue }
+            strings["OPTIONS"].map { options.insert($0) }
+            strings["KEEP_IN_DOCK"].map { keep.insert($0) }
+            strings["REMOVE_FROM_DOCK"].map { remove.insert($0) }
+        }
+        return (options, keep, remove)
+    }()
+
+    /// Uygulamayı Dock'tan çıkarır. Çalışıyorsa simge uygulama kapanana kadar durur (macOS'ta da öyle).
+    static func remove(bundleID: String) async -> Bool {
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first,
+              let list = (attribute(AXUIElementCreateApplication(dock.processIdentifier), kAXChildrenAttribute) as? [AXUIElement])?.first,
+              let items = attribute(list, kAXChildrenAttribute) as? [AXUIElement],
+              let item = items.first(where: { (attribute($0, kAXURLAttribute) as? URL).flatMap { Bundle(url: $0)?.bundleIdentifier } == bundleID })
+        else { return false }
+        guard AXUIElementPerformAction(item, "AXShowMenu" as CFString) == .success else { return false }
+        var menu: AXUIElement?
+        for _ in 0..<20 {
+            if let found = (attribute(item, kAXChildrenAttribute) as? [AXUIElement])?.first { menu = found; break }
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        guard let menu else { return false }
+        let entries = attribute(menu, kAXChildrenAttribute) as? [AXUIElement] ?? []
+        let options = entries.first { titles.options.contains(attribute($0, kAXTitleAttribute) as? String ?? "") }
+        let submenu = options.flatMap { (attribute($0, kAXChildrenAttribute) as? [AXUIElement])?.first }
+        let choices = submenu.flatMap { attribute($0, kAXChildrenAttribute) as? [AXUIElement] } ?? []
+        let target = choices.first { choice in
+            let title = attribute(choice, kAXTitleAttribute) as? String ?? ""
+            if titles.remove.contains(title) { return true }
+            return titles.keep.contains(title) && !(attribute(choice, "AXMenuItemMarkChar") as? String ?? "").isEmpty
+        }
+        guard let target, AXUIElementPerformAction(target, kAXPressAction as CFString) == .success else {
+            AXUIElementPerformAction(menu, kAXCancelAction as CFString)
+            DockTrace.log("dock'tan cikarma: menude secenek bulunamadi (\(bundleID))")
+            return false
+        }
+        return true
+    }
+
+    private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
     }
 }

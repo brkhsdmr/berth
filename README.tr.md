@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/bf3a8d2c-c039-401e-9e49-c861f7b6bb7f
 
 ### Dock önizlemeleri
 
-Dock'taki bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki ve tam ekran alanlarındaki pencereleri görünür; birine tıklayınca oraya geçersin. Tam ekran uygulamalarda da çalışır: imleci ekran kenarına götürünce Dock kayarak gelir, önizlemeler de onunla birlikte.
+Dock'taki bir simgenin üstüne gelince o uygulamanın tüm masaüstlerindeki ve tam ekran alanlarındaki pencereleri görünür; birine tıklayınca oraya geçersin. Önizlemede uygulamayı gizleme, kapatma ve sağ tık menüsüne gitmeden Dock'tan çıkarma düğmeleri de var. Tam ekran uygulamalarda da çalışır: imleci ekran kenarına götürünce Dock kayarak gelir, önizlemeler de onunla birlikte.
 
 <table><tr>
 <td><img src="docs/images/dock-desktop.png" alt="Dock'ta Chrome'un üstüne gelince masaüstündeki ve tam ekrandaki pencereleri"></td>

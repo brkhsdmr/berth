@@ -55,6 +55,8 @@ macOS sırayı değiştiren bir API sunmuyor, `yabai` de bunun için SIP'in kapa
 
 Dock simgesinin üstüne gelince uygulamanın tüm masaüstlerindeki pencereleri simgenin yanında açılır. Yoklama yok: Dock seçili simge değişince Erişilebilirlik bildirimi gönderiyor. Panelin kapanması Dock seçimine değil imlecin yerine bakar, çünkü imleç panele geçince seçim temizlenmeyebiliyor.
 
+Panelin başlığında Dock'ta tutulan uygulamalar için "Dock'tan çıkar" düğmesi var; kapalı ama Dock'ta duran uygulamada yalnızca bu düğmeyle küçük bir panel açılır. Tutulup tutulmadığı `com.apple.dock persistent-apps`'ten okunur. Çıkarma Dock'un kendi menüsüyle yapılır (`DockKeep`): simgede `AXShowMenu`, Seçenekler altında çalışan uygulamada işaretli "Dock'ta Tut", kapalı uygulamada "Dock'tan Çıkar" seçilir. Ayar dosyasını yazıp Dock'u yeniden başlatmaktan temiz: kullanıcının sağ tıkla yaptığının aynısı. Başlıklar Dock'un `DockMenus.strings` dosyalarından (`OPTIONS`, `KEEP_IN_DOCK`, `REMOVE_FROM_DOCK`) her dil için okunur. Çalışan uygulamanın simgesi, macOS'ta da olduğu gibi, uygulama kapanana kadar durur.
+
 Menü çubuğu simgesi: sol tık sahneyi açar, sağ tık menüyü (Ayarlar, Çık). Ayarlarda kısayol, Dock önizlemesi, oturum açılışı, sabit uygulamalar ve izin durumu bulunur.
 
 ## Ekran Kaydı izni isteğe bağlıdır
