@@ -2,6 +2,7 @@ import AppKit
 import BerthCore
 import IOKit
 import IOKit.hid
+import OSLog
 
 /// Harici farelere hız ve ivmeyi `hidutil` ile yazar (bkz. `MouseTune`). Her fare kendi ayarıyla
 /// (`MouseProfile`, ürün adıyla); ayarı açık olan bağlı farelerin hepsine uygulanır. Yalnız o
@@ -252,6 +253,8 @@ private final class DynamicPointer {
     private var source: CFRunLoopSource?
     private var restTimer: Timer?
     private var lastMove = CFAbsoluteTimeGetCurrent()
+    private var lastCheck = 0.0
+    private let log = Logger(subsystem: "io.github.brkhsdmr.berth", category: "MouseTuner")
 
     /// `force`: fare yeniden bağlanmış olabilir, servisler yeniden aranır.
     func set(_ next: [String: PointerAccelerator], force: Bool = false) {
@@ -345,9 +348,41 @@ private final class DynamicPointer {
     }
 
     private func restIfIdle() {
-        guard CFAbsoluteTimeGetCurrent() - lastMove > 0.08 else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastMove > 0.08 else { return }
         for name in accelerators.keys {
             if let factor = accelerators[name]?.rest() { write(factor, to: name, previous: nil) }
+        }
+        if now - lastCheck > 1 {
+            lastCheck = now
+            verify()
+        }
+    }
+
+    /// Çarpan yalnızca değişince yazılıyor; macOS değeri kendi değerine çekerse (uyanış, bağlantı,
+    /// kendi ayar güncellemesi) fare bir sonraki hız değişimine kadar yavaş kalabiliyordu. Durgunken
+    /// saniyede bir okunur: sapma varsa yeniden yazılır, servis düştüyse yeniden aranır.
+    private func verify() {
+        var stale = false
+        for (name, accelerator) in accelerators {
+            let expected = MouseTune.fixed(accelerator.factor)
+            for service in services[name] ?? [] {
+                guard let value = (IOHIDServiceClientCopyProperty(service, kIOHIDMouseAccelerationTypeKey as CFString) as? NSNumber)?.intValue else {
+                    stale = true
+                    continue
+                }
+                guard abs(value - expected) > 1 else { continue }
+                log.notice("Fare çarpanı dışarıdan değişmiş, yeniden yazıldı: \(name, privacy: .public) \(value) → \(expected)")
+                IOHIDServiceClientSetProperty(service, "HIDUseLinearScalingMouseAcceleration" as CFString, 1 as CFNumber)
+                IOHIDServiceClientSetProperty(service, kIOHIDMouseAccelerationTypeKey as CFString, expected as CFNumber)
+            }
+            if services[name]?.isEmpty ?? true { stale = true }
+        }
+        if stale {
+            log.notice("Fare servisi bulunamadı, yeniden aranıyor")
+            services = [:]
+            findServices()
+            for (name, accelerator) in accelerators { write(accelerator.factor, to: name, previous: nil) }
         }
     }
 
